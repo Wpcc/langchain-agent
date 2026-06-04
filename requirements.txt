@@ -1,0 +1,51 @@
+# Core AI
+langchain
+langchain-openai
+langchain-community
+openai
+
+# Config & validation
+python-dotenv
+pydantic
+pydantic-settings
+
+# Document processing
+jq
+pypdf
+dashscope
+
+# Vector DB
+langchain-chroma
+chromadb
+
+# RAG hybrid search
+rank-bm25
+
+# Web framework
+fastapi
+uvicorn[standard]
+websockets
+
+# Database
+sqlalchemy
+alembic
+aiosqlite
+
+# Cache / Session
+redis[asyncio]
+
+# Auth
+python-jose[cryptography]
+passlib[bcrypt]
+
+# Observability
+langsmith
+structlog
+
+# Dev UI (local testing only)
+streamlit
+
+# Testing
+pytest
+pytest-asyncio
+httpx
