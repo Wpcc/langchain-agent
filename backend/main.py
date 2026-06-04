@@ -46,7 +46,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
-    from utils.logger_handler import logger
+    from backend.utils.logger_handler import logger
     logger.error("unhandled_exception", path=str(request.url), error=str(exc))
     return JSONResponse(status_code=500, content={"detail": "服务器内部错误"})
 

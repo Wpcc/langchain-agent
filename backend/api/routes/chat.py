@@ -73,7 +73,7 @@ async def chat_websocket(
         db.add(conv)
         db.commit()
 
-    from agent.react_agent import ReactAgent
+    from backend.agent.react_agent import ReactAgent
     agent = ReactAgent(user_id=user.id)
 
     try:

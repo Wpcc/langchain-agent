@@ -1,6 +1,6 @@
-from utils.config_handler import prompts_config
-from utils.path_tool import get_abs_path
-from utils.logger_handler import logger
+from backend.utils.config_handler import prompts_config
+from backend.utils.path_tool import get_abs_path
+from backend.utils.logger_handler import logger
 
 def load_prompts(type:str):
   if type == 'system':

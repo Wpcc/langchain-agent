@@ -1,3 +1,3 @@
-from utils.config_handler import get_settings, settings
+from backend.utils.config_handler import get_settings, settings
 
 __all__ = ["settings", "get_settings"]

@@ -4,7 +4,7 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from utils.path_tool import get_abs_path
+from backend.utils.path_tool import get_abs_path
 
 # Load .env into os.environ so LangChain/LangSmith can pick up LANGCHAIN_* vars
 load_dotenv(override=False)

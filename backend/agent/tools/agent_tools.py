@@ -1,12 +1,12 @@
 import os
 from datetime import datetime
 
-from rag.rag_service import RagSummarizeService
+from backend.rag.rag_service import RagSummarizeService
 from langchain_core.tools import tool
 import random
-from utils.config_handler import agent_config
-from utils.path_tool import get_abs_path
-from utils.logger_handler import logger
+from backend.utils.config_handler import agent_config
+from backend.utils.path_tool import get_abs_path
+from backend.utils.logger_handler import logger
 
 _rag: "RagSummarizeService | None" = None
 

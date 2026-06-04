@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from backend.core.dependencies import get_current_user
 from backend.db.models import User
-from utils.path_tool import get_abs_path
+from backend.utils.path_tool import get_abs_path
 
 router = APIRouter()
 

@@ -9,8 +9,8 @@ from langgraph.runtime import Runtime
 from langgraph.types import Command
 from tenacity import RetryError, retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from utils.logger_handler import logger
-from utils.prompt_loader import load_prompts
+from backend.utils.logger_handler import logger
+from backend.utils.prompt_loader import load_prompts
 
 
 @wrap_tool_call

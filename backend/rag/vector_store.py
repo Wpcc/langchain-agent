@@ -4,17 +4,17 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from model.factory import embed_model
-from utils.config_handler import chroma_config
-from utils.file_handler import (
+from backend.model.factory import embed_model
+from backend.utils.config_handler import chroma_config
+from backend.utils.file_handler import (
     check_md5_hex,
     get_file_documents,
     get_file_md5_hex,
     listdir_with_allowed_type,
     save_md5_hex,
 )
-from utils.logger_handler import logger
-from utils.path_tool import get_abs_path
+from backend.utils.logger_handler import logger
+from backend.utils.path_tool import get_abs_path
 
 
 class VectorStoreService:

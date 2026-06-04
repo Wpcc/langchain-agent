@@ -2,8 +2,8 @@ from langchain_core.documents import Document
 from langchain_community.document_loaders import PyPDFLoader,TextLoader
 import os
 import hashlib
-from utils.logger_handler import logger
-from utils.path_tool import get_abs_path
+from backend.utils.logger_handler import logger
+from backend.utils.path_tool import get_abs_path
 
 def pdf_loader(filepath:str,password=None) -> list[Document]:
   return PyPDFLoader(filepath,password).load()

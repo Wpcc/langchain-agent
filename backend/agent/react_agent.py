@@ -1,8 +1,8 @@
 from langchain.agents import create_agent
 from langchain_core.tools import tool
-from model.factory import chat_model
-from utils.prompt_loader import load_prompts
-from agent.tools.agent_tools import (
+from backend.model.factory import chat_model
+from backend.utils.prompt_loader import load_prompts
+from backend.agent.tools.agent_tools import (
     rag_summarize,
     get_weather,
     get_user_location,
@@ -10,7 +10,7 @@ from agent.tools.agent_tools import (
     fetch_external_data,
     fill_context_for_report,
 )
-from agent.tools.middleware import (
+from backend.agent.tools.middleware import (
     monitor_tool,
     log_before_model,
     report_prompt_switch,

@@ -2,7 +2,7 @@ import json
 
 import redis.asyncio as aioredis
 
-from utils.config_handler import settings
+from backend.utils.config_handler import settings
 
 
 class ConversationStore:

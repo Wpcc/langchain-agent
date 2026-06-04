@@ -3,10 +3,10 @@
 """
 from typing import List
 from langchain_core.documents import Document
-from rag.vector_store import VectorStoreService
-from utils.prompt_loader import load_prompts
+from backend.rag.vector_store import VectorStoreService
+from backend.utils.prompt_loader import load_prompts
 from langchain_core.prompts import PromptTemplate
-from model.factory import chat_model
+from backend.model.factory import chat_model
 from langchain_core.output_parsers import StrOutputParser
 
 class RagSummarizeService(object):

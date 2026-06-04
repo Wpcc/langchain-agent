@@ -34,6 +34,10 @@ logs/
 *.swp
 *.swo
 
+# Runtime artifacts
+md5.text
+chroma_db/
+
 # OS
 .DS_Store
 Thumbs.db

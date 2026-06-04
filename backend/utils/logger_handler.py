@@ -5,7 +5,7 @@ from datetime import datetime
 
 import structlog
 
-from utils.path_tool import get_abs_path
+from backend.utils.path_tool import get_abs_path
 
 LOG_ROOT = get_abs_path("logs")
 os.makedirs(LOG_ROOT, exist_ok=True)
