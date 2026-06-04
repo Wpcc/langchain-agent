@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSock
 from jose import JWTError
 from sqlalchemy.orm import Session
 
-from agent.react_agent import ReactAgent
 from backend.core.dependencies import get_current_user, get_db
 from backend.core.security import decode_token
 from backend.core.session import ConversationStore, get_redis
@@ -74,6 +73,7 @@ async def chat_websocket(
         db.add(conv)
         db.commit()
 
+    from agent.react_agent import ReactAgent
     agent = ReactAgent(user_id=user.id)
 
     try:

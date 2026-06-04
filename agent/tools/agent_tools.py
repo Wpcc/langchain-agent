@@ -8,7 +8,15 @@ from utils.config_handler import agent_config
 from utils.path_tool import get_abs_path
 from utils.logger_handler import logger
 
-rag = RagSummarizeService()
+_rag: "RagSummarizeService | None" = None
+
+
+def _get_rag() -> RagSummarizeService:
+    global _rag
+    if _rag is None:
+        _rag = RagSummarizeService()
+    return _rag
+
 
 user_ids = ["1001","1002","1003","1004","1005","1006","1007","1008","1009","1010"]
 month_arr = ["2025-01","2025-02","2025-03","2025-04","2025-05","2025-06",
@@ -17,8 +25,8 @@ month_arr = ["2025-01","2025-02","2025-03","2025-04","2025-05","2025-06",
 external_data = {}
 
 @tool(description="从向量存储中检索参考资料，输入字符串，输出字符串")
-def rag_summarize(query:str) -> str:
-  return rag.rag_summarize(query)
+def rag_summarize(query: str) -> str:
+    return _get_rag().rag_summarize(query)
 
 @tool(description="获取指定城市的天气，返回字符串")
 def get_weather(city:str) -> str:

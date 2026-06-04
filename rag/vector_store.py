@@ -46,7 +46,7 @@ class VectorStoreService:
 
         try:
             from langchain_community.retrievers import BM25Retriever
-            from langchain.retrievers import EnsembleRetriever
+            from langchain_community.retrievers import EnsembleRetriever
 
             bm25_retriever = BM25Retriever.from_documents(split_docs, k=chroma_config["k"])
             logger.info("retriever_ready", mode="hybrid_bm25_vector", doc_chunks=len(split_docs))

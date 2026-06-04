@@ -26,6 +26,9 @@ fastapi
 uvicorn[standard]
 websockets
 
+# Reliability
+tenacity
+
 # Database
 sqlalchemy
 alembic

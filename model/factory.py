@@ -1,6 +1,7 @@
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import openai
 from abc import ABC, abstractmethod
 from typing import Optional
 from langchain_core.embeddings import Embeddings
@@ -19,9 +20,18 @@ class ChatModelFactory(BaseModelFactory):
     model = ChatOpenAI(
       model=rag_config["DOUBAO_MODEL"],
       base_url=rag_config["DOUBAO_BASE_URL"],
-      api_key=rag_config["DOUBAO_API_KEY"]
+      api_key=rag_config["DOUBAO_API_KEY"],
     )
-    return model
+    return model.with_retry(
+      retry_if_exception_type=(
+        openai.RateLimitError,
+        openai.APITimeoutError,
+        openai.APIConnectionError,
+        openai.InternalServerError,
+      ),
+      stop_after_attempt=3,
+      wait_exponential_jitter=True,
+    )
 
 class EmbeddingsFactory(BaseModelFactory):
   def generator(self) -> Embeddings:

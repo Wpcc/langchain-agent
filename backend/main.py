@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from backend.api.routes import auth, chat, documents
 from backend.db.session import create_tables
@@ -32,6 +34,21 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/auth", tags=["认证"])
 app.include_router(chat.router, prefix="/api/chat", tags=["对话"])
 app.include_router(documents.router, prefix="/api/documents", tags=["文档"])
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "message": "请求参数验证失败"},
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    from utils.logger_handler import logger
+    logger.error("unhandled_exception", path=str(request.url), error=str(exc))
+    return JSONResponse(status_code=500, content={"detail": "服务器内部错误"})
 
 
 @app.get("/api/health")
