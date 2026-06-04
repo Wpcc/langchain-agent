@@ -1,9 +1,13 @@
 import yaml
+from dotenv import load_dotenv
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from utils.path_tool import get_abs_path
+
+# Load .env into os.environ so LangChain/LangSmith can pick up LANGCHAIN_* vars
+load_dotenv(override=False)
 
 
 class Settings(BaseSettings):
@@ -22,6 +26,10 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "change-me-in-production"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 60
+    # LangSmith tracing (optional)
+    LANGCHAIN_TRACING_V2: bool = False
+    LANGCHAIN_API_KEY: str = ""
+    LANGCHAIN_PROJECT: str = "zhisaotong-dev"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

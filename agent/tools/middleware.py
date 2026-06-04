@@ -1,51 +1,56 @@
-from langchain.agents.middleware import wrap_tool_call,before_model,dynamic_prompt,ModelRequest
+import time
+from typing import Callable
+
+from langchain.agents import AgentState
+from langchain.agents.middleware import before_model, dynamic_prompt, wrap_tool_call, ModelRequest
 from langchain.tools.tool_node import ToolCallRequest
 from langchain_core.messages import ToolMessage
-from typing import Callable
-from langgraph.types import Command
-from utils.logger_handler import logger
 from langgraph.runtime import Runtime
-from langchain.agents import AgentState
+from langgraph.types import Command
+
+from utils.logger_handler import logger
 from utils.prompt_loader import load_prompts
+
 
 @wrap_tool_call
 def monitor_tool(
-  request:ToolCallRequest,
-  handler:Callable[[ToolCallRequest],ToolMessage | Command]
+    request: ToolCallRequest,
+    handler: Callable[[ToolCallRequest], ToolMessage | Command],
 ) -> ToolMessage | Command:
-  logger.info(f"[tool monitor]执行工具:{request.tool_call['name']}")
-  logger.info(f"[tool monitor]传入参数：{request.tool_call['args']}")
+    tool_name = request.tool_call["name"]
+    logger.info("tool_start", tool=tool_name, args=request.tool_call["args"])
 
-  try:
-    result = handler(request)
-    logger.info(f"[tool monitor]工具{request.tool_call['name']}调用成功")
+    start = time.perf_counter()
+    try:
+        result = handler(request)
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        logger.info("tool_success", tool=tool_name, latency_ms=latency_ms)
 
-    # 切换系统提示词
-    if request.tool_call['name'] == 'fill_context_for_report':
-      request.runtime.context['report'] = True
+        if tool_name == "fill_context_for_report":
+            request.runtime.context["report"] = True
 
-    return result
+        return result
 
-  except Exception as e:
-    logger.error(f"工具{request.tool_call['name']}调用失败，原因：{str(e)}")
-    raise e
-  
+    except Exception as e:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        logger.error("tool_failed", tool=tool_name, error=str(e), latency_ms=latency_ms)
+        raise
+
+
 @before_model
-def log_before_model(
-  state:AgentState,
-  runtime:Runtime
-):
-  logger.info(f"[log_before_model]即将调用模型，带有{len(state['messages'])}条消息")
-  logger.info(f"messages内容：{state['messages']}")
-  logger.info(f"messages内容：{state['messages'][-1]}")
-  # logger.info(f"[log_before_model]{type(state['messages'][-1]).__name__} | {state['messages'][-1].content.strip()}")
+def log_before_model(state: AgentState, runtime: Runtime):
+    messages = state["messages"]
+    est_tokens = sum(len(str(m.content)) for m in messages if m.content) // 4
+    logger.info(
+        "model_call",
+        message_count=len(messages),
+        last_message_type=type(messages[-1]).__name__,
+        estimated_input_tokens=est_tokens,
+    )
+    return None
 
-  return None
 
 @dynamic_prompt
-def report_prompt_switch(request:ModelRequest):
-  is_report = request.runtime.context.get("report",False)
-  if is_report:
-    return load_prompts('report')
-  
-  return load_prompts('system')
+def report_prompt_switch(request: ModelRequest):
+    is_report = request.runtime.context.get("report", False)
+    return load_prompts("report") if is_report else load_prompts("system")

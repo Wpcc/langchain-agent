@@ -9,12 +9,6 @@ from langchain_core.prompts import PromptTemplate
 from model.factory import chat_model
 from langchain_core.output_parsers import StrOutputParser
 
-def print_prompt(prompt):
-  print("="*20)
-  print(prompt.to_string())
-  print("="*20)
-  return prompt
-
 class RagSummarizeService(object):
   def __init__(self):
     self.vector_store = VectorStoreService()
@@ -22,11 +16,7 @@ class RagSummarizeService(object):
     self.prompt_text = load_prompts("rag")
     self.prompt_template = PromptTemplate.from_template(self.prompt_text)
     self.model = chat_model
-    self.chain = self._init_chain()
-
-  def _init_chain(self):
-    chain = self.prompt_template | print_prompt | self.model | StrOutputParser()
-    return chain
+    self.chain = self.prompt_template | self.model | StrOutputParser()
 
   def retriever_docs(self,query:str) -> List[Document]:
     return self.retriever.invoke(query)
