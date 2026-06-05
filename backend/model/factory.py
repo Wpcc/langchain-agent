@@ -1,4 +1,3 @@
-import openai
 from abc import ABC, abstractmethod
 from typing import Optional
 from langchain_core.embeddings import Embeddings
@@ -16,20 +15,13 @@ class BaseModelFactory(ABC):
 
 class ChatModelFactory(BaseModelFactory):
     def generator(self) -> ChatOpenAI:
-        model = ChatOpenAI(
+        # max_retries uses the OpenAI SDK's native retry so the model stays
+        # a ChatOpenAI instance (required for bind_tools in the agent factory)
+        return ChatOpenAI(
             model=rag_config["DOUBAO_MODEL"],
             base_url=rag_config["DOUBAO_BASE_URL"],
             api_key=rag_config["DOUBAO_API_KEY"],
-        )
-        return model.with_retry(
-            retry_if_exception_type=(
-                openai.RateLimitError,
-                openai.APITimeoutError,
-                openai.APIConnectionError,
-                openai.InternalServerError,
-            ),
-            stop_after_attempt=3,
-            wait_exponential_jitter=True,
+            max_retries=3,
         )
 
 
