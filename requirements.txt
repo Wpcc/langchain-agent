@@ -39,7 +39,7 @@ redis[asyncio]
 
 # Auth
 python-jose[cryptography]
-passlib[bcrypt]
+bcrypt
 
 # Observability
 langsmith
