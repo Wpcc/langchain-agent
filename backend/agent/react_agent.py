@@ -1,4 +1,5 @@
 from langchain.agents import create_agent
+from langchain_core.messages import AIMessageChunk
 from langchain_core.tools import tool
 from backend.model.factory import chat_model
 from backend.utils.prompt_loader import load_prompts
@@ -47,14 +48,18 @@ class ReactAgent:
     def execute_stream(self, query: str, history: list[dict] = None):
         messages = (history or []) + [{"role": "user", "content": query}]
 
-        for chunk in self.agent.stream(
+        for chunk, _ in self.agent.stream(
             {"messages": messages},
-            stream_mode="values",
+            stream_mode="messages",
             context={"report": False},
         ):
-            latest_message = chunk["messages"][-1]
-            if latest_message.content:
-                yield latest_message.content.strip() + "\n"
+            # AIMessageChunk with content and no tool_call_chunks = plain text token
+            if (
+                isinstance(chunk, AIMessageChunk)
+                and chunk.content
+                and not getattr(chunk, "tool_call_chunks", None)
+            ):
+                yield chunk.content
 
 
 if __name__ == "__main__":
