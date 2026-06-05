@@ -39,6 +39,10 @@ async def _stream_agent(agent: ReactAgent, query: str, history: list) -> AsyncGe
         try:
             for chunk in agent.execute_stream(query, history):
                 asyncio.run_coroutine_threadsafe(queue.put(chunk), loop)
+        except Exception as e:
+            from backend.utils.logger_handler import logger
+            logger.error("agent_stream_error", error=str(e), exc_info=True)
+            asyncio.run_coroutine_threadsafe(queue.put(f"__ERROR__:{e}"), loop)
         finally:
             asyncio.run_coroutine_threadsafe(queue.put(None), loop)
 

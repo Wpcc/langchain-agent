@@ -48,18 +48,32 @@ class ReactAgent:
     def execute_stream(self, query: str, history: list[dict] = None):
         messages = (history or []) + [{"role": "user", "content": query}]
 
-        for chunk, _ in self.agent.stream(
+        for item in self.agent.stream(
             {"messages": messages},
             stream_mode="messages",
             context={"report": False},
         ):
-            # AIMessageChunk with content and no tool_call_chunks = plain text token
-            if (
-                isinstance(chunk, AIMessageChunk)
-                and chunk.content
-                and not getattr(chunk, "tool_call_chunks", None)
-            ):
-                yield chunk.content
+            # LangGraph yields (chunk, metadata) tuples in messages mode
+            chunk = item[0] if isinstance(item, (list, tuple)) else item
+
+            if not isinstance(chunk, AIMessageChunk):
+                continue
+
+            # Skip pure tool-call chunks (no text content for the user)
+            if getattr(chunk, "tool_call_chunks", None) and not chunk.content:
+                continue
+
+            # Content can be a plain string or a list of content blocks
+            content = chunk.content
+            if isinstance(content, str):
+                if content:
+                    yield content
+            elif isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        text = block.get("text", "")
+                        if text:
+                            yield text
 
 
 if __name__ == "__main__":
