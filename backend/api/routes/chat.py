@@ -103,7 +103,8 @@ async def chat_websocket(
     except WebSocketDisconnect:
         pass
     finally:
-        await redis_client.aclose()
+        if redis_client is not None:
+            await redis_client.aclose()
 
 
 @router.get("/conversations", response_model=list[ConversationSchema])
