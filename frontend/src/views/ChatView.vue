@@ -25,6 +25,20 @@
           >
             <el-icon><ChatDotRound /></el-icon>
             <span class="conv-title">{{ conv.title }}</span>
+            <el-popconfirm
+              title="确认删除此对话？"
+              confirm-button-text="删除"
+              cancel-button-text="取消"
+              confirm-button-type="danger"
+              width="160"
+              @confirm="handleDeleteConv(conv.id)"
+            >
+              <template #reference>
+                <el-icon class="delete-btn" @click.stop>
+                  <Delete />
+                </el-icon>
+              </template>
+            </el-popconfirm>
           </div>
           <div v-if="chat.conversations.length === 0" class="conv-empty">
             暂无对话
@@ -103,7 +117,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   Plus, Promotion, UserFilled, Service,
-  ChatDotRound, ChatLineRound, Loading, SwitchButton, User,
+  ChatDotRound, ChatLineRound, Loading, SwitchButton, User, Delete,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
@@ -169,6 +183,11 @@ async function handleSend() {
   ws.send(text)
 }
 
+async function handleDeleteConv(id: string) {
+  if (id === chat.currentConvId) ws?.close()
+  await chat.deleteConversation(id)
+}
+
 function handleLogout() {
   ws?.close()
   auth.logout()
@@ -223,6 +242,15 @@ function handleLogout() {
 .conv-item.active { background: #ecf5ff; color: #409eff; }
 .conv-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .conv-empty { text-align: center; color: #c0c4cc; font-size: 13px; padding: 16px 0; }
+
+.delete-btn {
+  flex-shrink: 0;
+  opacity: 0;
+  color: #909399;
+  transition: opacity 0.15s, color 0.15s;
+}
+.conv-item:hover .delete-btn { opacity: 1; }
+.delete-btn:hover { color: #f56c6c; }
 
 .sidebar-footer {
   display: flex;

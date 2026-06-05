@@ -133,6 +133,23 @@ def create_conversation(
     return ConversationSchema(id=conv.id, title=conv.title, created_at=conv.created_at)
 
 
+@router.delete("/conversations/{conversation_id}", status_code=204)
+def delete_conversation(
+    conversation_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    conv = db.query(Conversation).filter(
+        Conversation.id == conversation_id,
+        Conversation.user_id == user.id,
+    ).first()
+    if not conv:
+        raise HTTPException(404, "对话不存在")
+    db.query(Message).filter(Message.conversation_id == conversation_id).delete()
+    db.delete(conv)
+    db.commit()
+
+
 @router.get("/conversations/{conversation_id}/messages", response_model=ChatHistoryResponse)
 def get_messages(
     conversation_id: str,

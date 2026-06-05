@@ -52,6 +52,15 @@ export const useChatStore = defineStore('chat', () => {
     if (last) last.pending = false
   }
 
+  async function deleteConversation(convId: string) {
+    await http.delete(`/api/chat/conversations/${convId}`)
+    conversations.value = conversations.value.filter((c) => c.id !== convId)
+    if (currentConvId.value === convId) {
+      currentConvId.value = ''
+      messages.value = []
+    }
+  }
+
   return {
     conversations,
     currentConvId,
@@ -62,5 +71,6 @@ export const useChatStore = defineStore('chat', () => {
     addMessage,
     appendToLastAssistantMessage,
     finalizeLastMessage,
+    deleteConversation,
   }
 })
