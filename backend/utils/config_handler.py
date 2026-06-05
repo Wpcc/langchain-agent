@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 60
     # LangSmith tracing (optional)
-    LANGCHAIN_TRACING_V2: bool = False
-    LANGCHAIN_API_KEY: str = ""
+    LANGSMITH_TRACING: bool = True
+    LANGSMITH_API_KEY: str = ""
     LANGCHAIN_PROJECT: str = "zhisaotong-dev"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
