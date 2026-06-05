@@ -1,7 +1,12 @@
+from __future__ import annotations
+
 import asyncio
 import threading
 import uuid
-from typing import AsyncGenerator
+from typing import TYPE_CHECKING, AsyncGenerator
+
+if TYPE_CHECKING:
+    from backend.agent.react_agent import ReactAgent
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from jose import JWTError
