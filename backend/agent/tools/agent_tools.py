@@ -3,7 +3,7 @@ from datetime import datetime
 
 from backend.rag.rag_service import RagSummarizeService
 from langchain_core.tools import tool
-from backend.utils.config_handler import agent_config
+from backend.utils.config_handler import agent_config, settings
 from backend.utils.path_tool import get_abs_path
 from backend.utils.logger_handler import logger
 
@@ -25,14 +25,27 @@ def rag_summarize(query: str) -> str:
     return _get_rag().rag_summarize(query)
 
 
-@tool(description="获取指定城市的天气，返回字符串")
+@tool(description="获取指定城市的实时天气信息，返回字符串")
 def get_weather(city: str) -> str:
-    return f"城市{city}天气为晴天，气温26摄氏度，空气湿度50%，南风1级，AQI21，最近6小时降雨概率极低"
-
-
-@tool(description="获取用户所在城市的名称，返回字符串")
-def get_user_location() -> str:
-    return "深圳"
+    try:
+        from tavily import TavilyClient
+        client = TavilyClient(api_key=settings.TAVILY_API_KEY)
+        response = client.search(
+            query=f"{city}今天天气",
+            search_depth="basic",
+            max_results=3,
+            include_answer=True,
+        )
+        answer = response.get("answer", "")
+        if answer:
+            return f"{city}天气：{answer}"
+        results = response.get("results", [])
+        if results:
+            return f"{city}天气：{results[0].get('content', '')[:300]}"
+        return f"未能查询到{city}的天气信息"
+    except Exception as e:
+        logger.warning("weather_search_failed", city=city, error=str(e))
+        return f"暂时无法获取{city}的天气信息，请稍后重试"
 
 
 @tool(description="获取当前月份，返回字符串")

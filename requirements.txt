@@ -26,6 +26,9 @@ fastapi
 uvicorn[standard]
 websockets
 
+# Search
+tavily-python
+
 # Reliability
 tenacity
 

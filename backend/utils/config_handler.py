@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "change-me-in-production"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 60
+    # Tavily search
+    TAVILY_API_KEY: str = ""
     # LangSmith tracing (optional)
     LANGSMITH_TRACING: bool = True
     LANGSMITH_API_KEY: str = ""
