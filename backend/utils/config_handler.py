@@ -4,10 +4,12 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from backend.utils.path_tool import get_abs_path
+from backend.utils.path_tool import get_abs_path, get_project_root
 
-# Load .env into os.environ so LangChain/LangSmith can pick up LANGCHAIN_* vars
-load_dotenv(override=False)
+# .env lives inside backend/ — resolve via absolute path so it is found
+# regardless of which directory uvicorn / pytest is launched from.
+_ENV_FILE = get_abs_path(".env")
+load_dotenv(dotenv_path=_ENV_FILE, override=False)
 
 
 class Settings(BaseSettings):
@@ -33,7 +35,7 @@ class Settings(BaseSettings):
     LANGSMITH_API_KEY: str = ""
     LANGCHAIN_PROJECT: str = "zhisaotong-dev"
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=_ENV_FILE, env_file_encoding="utf-8")
 
 
 @lru_cache

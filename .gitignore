@@ -15,6 +15,7 @@ build/
 
 # Environment — never commit secrets
 .env
+backend/.env
 *.env.local
 
 # Database
@@ -22,10 +23,10 @@ build/
 *.sqlite3
 
 # Vector DB (rebuilt from source docs)
-chroma_db/
+**/chroma_db/
 
 # Logs
-logs/
+**/logs/
 *.log
 
 # IDE
@@ -35,8 +36,7 @@ logs/
 *.swo
 
 # Runtime artifacts
-md5.text
-chroma_db/
+**/md5.text
 
 # OS
 .DS_Store
