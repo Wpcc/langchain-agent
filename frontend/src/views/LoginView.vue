@@ -129,8 +129,8 @@ async function handleRegister() {
   loading.value = true
   try {
     await auth.register(form.username, form.password)
-    ElMessage.success('注册成功，请登录')
-    activeTab.value = 'login'
+    await auth.login(form.username, form.password)
+    router.push('/')
   } catch (e: any) {
     ElMessage.error(e.response?.data?.detail ?? '注册失败')
   } finally {

@@ -111,6 +111,8 @@ JWT_EXPIRE_MINUTES=60
 
 ### Run
 
+#### Backend
+
 ```bash
 # Start Redis (required for session storage)
 redis-server
@@ -118,8 +120,23 @@ redis-server
 # Start the FastAPI backend
 uvicorn backend.main:app --reload
 
-# API docs
-open http://localhost:8000/api/docs
+# API docs available at
+# http://localhost:8000/api/docs
+```
+
+#### Frontend
+
+```bash
+cd frontend
+
+# Install dependencies (first time only)
+npm install
+
+# Start the Vite dev server
+npm run dev
+
+# App available at
+# http://localhost:5173
 ```
 
 For local development without Redis, you can also run the original Streamlit UI:
