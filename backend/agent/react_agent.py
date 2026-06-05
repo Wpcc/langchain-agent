@@ -6,7 +6,6 @@ from backend.utils.prompt_loader import load_prompts
 from backend.agent.tools.agent_tools import (
     rag_summarize,
     get_weather,
-    get_user_location,
     get_current_month,
     fetch_external_data,
     fill_context_for_report,
@@ -32,7 +31,6 @@ class ReactAgent:
             tools=[
                 rag_summarize,
                 get_weather,
-                get_user_location,
                 get_user_id,
                 get_current_month,
                 fetch_external_data,

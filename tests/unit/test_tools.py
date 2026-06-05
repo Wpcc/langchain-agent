@@ -28,14 +28,6 @@ def test_get_weather_contains_city_name_for_any_city():
         assert city in result
 
 
-def test_get_user_location_valid_city():
-    from backend.agent.tools.agent_tools import get_user_location
-
-    valid = {"深圳", "合肥", "杭州"}
-    result = get_user_location.invoke({})
-    assert result in valid, f"Unexpected city: {result}"
-
-
 def test_fetch_external_data_unknown_user_returns_empty():
     from backend.agent.tools.agent_tools import fetch_external_data
 

@@ -14,16 +14,16 @@ An enterprise-level AI customer service agent for robot vacuum cleaners, built w
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| LLM | ByteDance Doubao (OpenAI-compatible) |
-| Embeddings | Alibaba DashScope text-embedding-v3 |
-| Vector DB | ChromaDB |
-| Agent framework | LangChain + LangGraph |
-| Backend | FastAPI + Uvicorn |
-| Session cache | Redis |
-| Database | SQLite (dev) / PostgreSQL (prod) |
-| Frontend | Vue 3 + Element Plus *(in progress)* |
+| Layer           | Technology                           |
+| --------------- | ------------------------------------ |
+| LLM             | ByteDance Doubao (OpenAI-compatible) |
+| Embeddings      | Alibaba DashScope text-embedding-v3  |
+| Vector DB       | ChromaDB                             |
+| Agent framework | LangChain + LangGraph                |
+| Backend         | FastAPI + Uvicorn                    |
+| Session cache   | Redis                                |
+| Database        | SQLite (dev) / PostgreSQL (prod)     |
+| Frontend        | Vue 3 + Element Plus _(in progress)_ |
 
 ## Project Structure
 
@@ -132,25 +132,25 @@ streamlit run app.py
 
 ### Authentication
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/auth/register` | Create a new user |
-| POST | `/api/auth/login` | Login, returns JWT token |
+| Method | Endpoint             | Description              |
+| ------ | -------------------- | ------------------------ |
+| POST   | `/api/auth/register` | Create a new user        |
+| POST   | `/api/auth/login`    | Login, returns JWT token |
 
 ### Chat
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| WS | `/api/chat/ws/{conversation_id}?token=<jwt>` | Streaming chat via WebSocket |
-| GET | `/api/chat/conversations` | List user's conversations |
-| POST | `/api/chat/conversations` | Create a new conversation |
-| GET | `/api/chat/conversations/{id}/messages` | Fetch message history |
+| Method | Endpoint                                     | Description                  |
+| ------ | -------------------------------------------- | ---------------------------- |
+| WS     | `/api/chat/ws/{conversation_id}?token=<jwt>` | Streaming chat via WebSocket |
+| GET    | `/api/chat/conversations`                    | List user's conversations    |
+| POST   | `/api/chat/conversations`                    | Create a new conversation    |
+| GET    | `/api/chat/conversations/{id}/messages`      | Fetch message history        |
 
 ### Documents
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/documents/upload` | Upload TXT/PDF to knowledge base |
+| Method | Endpoint                | Description                      |
+| ------ | ----------------------- | -------------------------------- |
+| POST   | `/api/documents/upload` | Upload TXT/PDF to knowledge base |
 
 ### WebSocket Protocol
 
@@ -164,15 +164,14 @@ Server → Client:  "__ERROR__:message"  (on auth failure)
 
 The ReAct agent has access to 7 tools:
 
-| Tool | Description |
-|------|-------------|
-| `rag_summarize` | Retrieve relevant docs from vector store |
-| `get_weather` | Get weather for a city |
-| `get_user_location` | Get user's current city |
-| `get_user_id` | Get authenticated user's ID |
-| `get_current_month` | Get current year-month |
-| `fetch_external_data` | Fetch user usage records from CSV |
-| `fill_context_for_report` | Trigger report generation mode |
+| Tool                      | Description                              |
+| ------------------------- | ---------------------------------------- |
+| `rag_summarize`           | Retrieve relevant docs from vector store |
+| `get_weather`             | Get weather for a city                   |
+| `get_user_id`             | Get authenticated user's ID              |
+| `get_current_month`       | Get current year-month                   |
+| `fetch_external_data`     | Fetch user usage records from CSV        |
+| `fill_context_for_report` | Trigger report generation mode           |
 
 ## Roadmap
 
