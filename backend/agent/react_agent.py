@@ -48,6 +48,7 @@ class ReactAgent:
 
         for item in self.agent.stream(
             {"messages": messages},
+            config={"recursion_limit": 15},
             stream_mode="messages",
             context={"report": False},
         ):

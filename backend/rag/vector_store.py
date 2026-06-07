@@ -45,19 +45,42 @@ class VectorStoreService:
             return vector_retriever
 
         try:
-            from langchain_community.retrievers import BM25Retriever
-            from langchain_community.retrievers import EnsembleRetriever
+            from langchain_community.retrievers import BM25Retriever, EnsembleRetriever
 
             bm25_retriever = BM25Retriever.from_documents(split_docs, k=chroma_config["k"])
-            logger.info("retriever_ready", mode="hybrid_bm25_vector", doc_chunks=len(split_docs))
-
-            return EnsembleRetriever(
+            ensemble = EnsembleRetriever(
                 retrievers=[bm25_retriever, vector_retriever],
                 weights=[0.4, 0.6],
             )
+            logger.info("retriever_ready", mode="hybrid_bm25_vector", doc_chunks=len(split_docs))
         except ImportError:
             logger.warning("retriever_fallback", reason="rank_bm25 not installed, vector-only mode")
             return vector_retriever
+
+        # Reranker: cross-encoder rescores the k ensemble candidates and keeps top_n.
+        # Why: BM25+vector rank fusion is symmetric — it cannot model query-document
+        # interaction. A cross-encoder reads both query and passage together, giving
+        # much higher precision at the cost of O(k) forward passes (cheap vs LLM).
+        try:
+            from langchain.retrievers import ContextualCompressionRetriever
+            from langchain.retrievers.document_compressors import CrossEncoderReranker
+            from langchain_community.cross_encoders import HuggingFaceCrossEncoder
+
+            cross_encoder = HuggingFaceCrossEncoder(
+                model_name=chroma_config.get("reranker_model", "BAAI/bge-reranker-base")
+            )
+            reranker = CrossEncoderReranker(
+                model=cross_encoder,
+                top_n=chroma_config.get("reranker_top_n", 3),
+            )
+            logger.info("reranker_ready", model=chroma_config.get("reranker_model"))
+            return ContextualCompressionRetriever(
+                base_compressor=reranker,
+                base_retriever=ensemble,
+            )
+        except Exception as e:
+            logger.warning("reranker_fallback", reason=str(e), fallback="ensemble-only")
+            return ensemble
 
     def _get_split_docs(self) -> list[Document]:
         if self._split_docs_cache is not None:
@@ -79,6 +102,33 @@ class VectorStoreService:
 
         self._split_docs_cache = all_splits
         return all_splits
+
+    def list_sources(self) -> list[dict]:
+        """Return all indexed source files with their chunk counts."""
+        collection = self.vector_store._collection
+        results = collection.get(include=["metadatas"])
+        sources: dict[str, int] = {}
+        for meta in results.get("metadatas") or []:
+            src = meta.get("source", "")
+            if src:
+                sources[src] = sources.get(src, 0) + 1
+        return [
+            {"path": path, "filename": os.path.basename(path), "chunks": count}
+            for path, count in sources.items()
+        ]
+
+    def delete_source(self, filepath: str) -> int:
+        """Delete all vectors whose source metadata matches filepath.
+        Returns the number of deleted chunks.
+        """
+        collection = self.vector_store._collection
+        results = collection.get(where={"source": filepath}, include=[])
+        ids = results.get("ids") or []
+        if ids:
+            collection.delete(ids=ids)
+        self._split_docs_cache = None  # invalidate BM25 cache
+        logger.info("doc_deleted", path=filepath, deleted_chunks=len(ids))
+        return len(ids)
 
     def load_document(self):
         """Load files from data folder into vector store with MD5 deduplication."""

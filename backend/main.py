@@ -4,9 +4,15 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from backend.api.routes import auth, chat, documents
 from backend.db.session import create_tables
+
+# One shared limiter — routes import this to apply per-endpoint limits
+limiter = Limiter(key_func=get_remote_address)
 
 
 @asynccontextmanager
@@ -22,6 +28,9 @@ app = FastAPI(
     redoc_url="/api/redoc",
     lifespan=lifespan,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,

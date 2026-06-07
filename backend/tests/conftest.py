@@ -4,7 +4,10 @@ import os
 # and load_dotenv() both pick up test values instead of production secrets.
 os.environ.setdefault("DOUBAO_API_KEY", "test-api-key")
 os.environ.setdefault("DOUBAO_BASE_URL", "https://test.api.local/v1")
-os.environ.setdefault("DOUBAO_MODEL", "test-model")
+os.environ.setdefault("DOUBAO_MODEL_PRO",  "test-model-pro")
+os.environ.setdefault("DOUBAO_MODEL_MINI", "test-model-mini")
+os.environ.setdefault("DOUBAO_MODEL_LITE", "test-model-lite")
+os.environ.setdefault("DOUBAO_MODEL_CODE", "test-model-code")
 os.environ.setdefault("EMBEDDING_MODEL", "text-embedding-v3")
 os.environ.setdefault("EMBEDDING_API_KEY", "test-embedding-key")
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")

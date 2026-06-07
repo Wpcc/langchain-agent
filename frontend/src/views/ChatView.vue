@@ -47,6 +47,11 @@
       </div>
 
       <div class="sidebar-footer">
+        <el-tooltip content="知识库管理" placement="right">
+          <el-button text class="footer-kb-btn" @click="router.push('/knowledge')">
+            <el-icon><Folder /></el-icon>
+          </el-button>
+        </el-tooltip>
         <el-icon><User /></el-icon>
         <span>{{ auth.username }}</span>
       </div>
@@ -117,7 +122,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   Plus, Promotion, UserFilled, Service,
-  ChatDotRound, ChatLineRound, Loading, SwitchButton, User, Delete,
+  ChatDotRound, ChatLineRound, Loading, SwitchButton, User, Delete, Folder,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
@@ -136,7 +141,15 @@ onMounted(() => chat.fetchConversations())
 onUnmounted(() => ws?.close())
 
 function toHtml(text: string) {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>')
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(
+      /\[来源[：:]([^\]]+)\]/g,
+      '<span class="citation">$1</span>',
+    )
+    .replace(/\n/g, '<br>')
 }
 
 async function scrollToBottom() {
@@ -263,6 +276,11 @@ function handleLogout() {
   flex-shrink: 0;
 }
 
+.footer-kb-btn {
+  margin-right: auto;
+  color: #909399;
+}
+
 /* ── Main ── */
 .main { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
 
@@ -312,6 +330,17 @@ function handleLogout() {
 
 .spin { color: #909399; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.citation {
+  display: inline-block;
+  margin: 4px 4px 0 0;
+  padding: 1px 8px;
+  background: #ecf5ff;
+  border: 1px solid #b3d8ff;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #409eff;
+}
 
 .input-bar {
   padding: 16px;

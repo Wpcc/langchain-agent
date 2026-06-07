@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 
 from backend.core.dependencies import get_current_user, get_db
 from backend.core.security import decode_token
-from backend.core.session import ConversationStore, get_redis
+from backend.core.session import ConversationStore, get_redis, profile_store
+from backend.core.profile import update_user_profile_async, generate_title_async
 from backend.db.models import Conversation, Message, User
 from backend.schemas.chat import ChatHistoryResponse, ConversationSchema, MessageSchema
 
@@ -88,7 +89,14 @@ async def chat_websocket(
     try:
         while True:
             query = await websocket.receive_text()
-            history = await store.get_history(conversation_id)
+
+            # Layer 1: sliding window — last HISTORY_WINDOW turns only
+            history = await store.get_window(conversation_id)
+
+            # Layer 3: inject long-term user profile at the top of history
+            user_profile = profile_store.get_profile(str(user.id), db)
+            history = profile_store.inject(user_profile, history)
+
             full_response = ""
 
             async for chunk in _stream_agent(agent, query, history):
@@ -97,12 +105,24 @@ async def chat_websocket(
 
             await websocket.send_text("__END__")
 
+            response_text = full_response.strip()
             await store.append_message(conversation_id, "user", query)
-            await store.append_message(conversation_id, "assistant", full_response.strip())
+            await store.append_message(conversation_id, "assistant", response_text)
 
             db.add(Message(conversation_id=conversation_id, role="user", content=query))
-            db.add(Message(conversation_id=conversation_id, role="assistant", content=full_response.strip()))
+            db.add(Message(conversation_id=conversation_id, role="assistant", content=response_text))
             db.commit()
+
+            # Layer 3: fire-and-forget profile extraction (does not block streaming)
+            asyncio.create_task(
+                update_user_profile_async(str(user.id), query, response_text)
+            )
+
+            # Auto-generate conversation title from the first exchange
+            if conv.title == "新对话":
+                asyncio.create_task(
+                    generate_title_async(conversation_id, query, db)
+                )
 
     except WebSocketDisconnect:
         pass

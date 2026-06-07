@@ -1,0 +1,96 @@
+[
+  {
+    "id": "rag_001",
+    "category": "rag",
+    "desc": "产品知识：小户型选购",
+    "query": "小户型适合选哪款扫地机器人？",
+    "expected_tools": ["rag_summarize"],
+    "expected_keywords": ["小户型", "扫地"],
+    "refusal_ok": false
+  },
+  {
+    "id": "rag_002",
+    "category": "rag",
+    "desc": "故障排查：卡住问题",
+    "query": "扫地机器人经常卡在门槛怎么解决？",
+    "expected_tools": ["rag_summarize"],
+    "expected_keywords": ["门槛", "卡"],
+    "refusal_ok": false
+  },
+  {
+    "id": "rag_003",
+    "category": "rag",
+    "desc": "保养知识：电池维护",
+    "query": "扫地机器人电池如何保养才能延长使用寿命？",
+    "expected_tools": ["rag_summarize"],
+    "expected_keywords": ["电池", "充电"],
+    "refusal_ok": false
+  },
+  {
+    "id": "weather_001",
+    "category": "tool",
+    "desc": "天气工具：湿度对机器人的影响",
+    "query": "今天北京天气怎么样？适合开扫地机器人吗？",
+    "expected_tools": ["get_weather"],
+    "expected_keywords": ["北京", "天气"],
+    "refusal_ok": false
+  },
+  {
+    "id": "report_001",
+    "category": "tool_chain",
+    "desc": "报告生成：完整工具链",
+    "query": "帮我生成上个月的扫地机器人使用报告",
+    "expected_tools": ["get_user_id", "get_current_month", "fill_context_for_report", "fetch_external_data"],
+    "expected_keywords": ["报告", "使用"],
+    "refusal_ok": false
+  },
+  {
+    "id": "report_002",
+    "category": "tool_chain",
+    "desc": "报告生成：指定月份",
+    "query": "查一下我2026年5月的使用记录",
+    "expected_tools": ["get_user_id", "fetch_external_data"],
+    "expected_keywords": ["2026", "使用"],
+    "refusal_ok": true
+  },
+  {
+    "id": "multi_001",
+    "category": "multi_tool",
+    "desc": "多工具：天气+产品建议",
+    "query": "广州今天湿度高，这种天气扫地机器人还能正常使用吗？",
+    "expected_tools": ["get_weather", "rag_summarize"],
+    "expected_keywords": ["广州", "湿度"],
+    "refusal_ok": false
+  },
+  {
+    "id": "oos_001",
+    "category": "out_of_scope",
+    "desc": "越界：无关问题",
+    "query": "帮我写一首诗",
+    "expected_tools": [],
+    "expected_keywords": [],
+    "refusal_ok": true
+  },
+  {
+    "id": "memory_001",
+    "category": "memory",
+    "desc": "记忆注入：带历史的问答",
+    "query": "根据我之前说的情况，哪款机器人更适合我？",
+    "history": [
+      {"role": "user",      "content": "我家是120平的房子，有宠物"},
+      {"role": "assistant", "content": "好的，我了解您的家庭情况。"}
+    ],
+    "expected_tools": ["rag_summarize"],
+    "expected_keywords": ["宠物", "适合"],
+    "refusal_ok": false
+  },
+  {
+    "id": "citation_001",
+    "category": "citation",
+    "desc": "引用溯源：回答含来源标注",
+    "query": "扫地机器人的导航方式有哪些？",
+    "expected_tools": ["rag_summarize"],
+    "expected_keywords": ["导航", "来源"],
+    "refusal_ok": false
+  }
+]

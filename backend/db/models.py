@@ -7,6 +7,8 @@ from sqlalchemy.orm import declarative_base
 Base = declarative_base()
 
 
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -33,3 +35,14 @@ class Message(Base):
     role = Column(String(20), nullable=False)
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class UserProfile(Base):
+    """Long-term user fact store. Facts are a JSON dict: {key: value}.
+    Newer values overwrite older ones for the same key (conflict resolution).
+    """
+    __tablename__ = "user_profiles"
+
+    user_id = Column(String(36), ForeignKey("users.id"), primary_key=True)
+    facts = Column(Text, nullable=False, default="{}")
+    updated_at = Column(DateTime, default=datetime.utcnow)

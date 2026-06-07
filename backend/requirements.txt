@@ -19,8 +19,9 @@ dashscope
 langchain-chroma
 chromadb
 
-# RAG hybrid search
+# RAG hybrid search + reranking
 rank-bm25
+sentence-transformers
 
 # Web framework
 fastapi
@@ -44,6 +45,9 @@ redis[asyncio]
 # Auth
 python-jose[cryptography]
 bcrypt
+
+# Rate limiting
+slowapi
 
 # Observability
 langsmith

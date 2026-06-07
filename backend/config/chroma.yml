@@ -1,10 +1,20 @@
 collection_name: agent
 persist_directory: chroma_db
-k: 3
 data_path: data
 allow_knowledge_file_type: ["txt", "pdf"]
 md5_hex_store: md5.text
 
-chunk_size: 200
-chunk_overlap: 20
-separators: ["\n\n", "\n", ".", "!", "?", "。", "！", "？", " ", ""]
+# Retrieval: BM25 + vector ensemble feeds k candidates into the reranker
+k: 6
+
+# Chunking: 500 Chinese chars ≈ 250 tokens, preserves semantic units
+# Why 500: a product FAQ entry or manual paragraph typically fits in 400-600 chars.
+# Overlap 50 ensures sentences split across chunk boundaries are still retrievable.
+chunk_size: 500
+chunk_overlap: 50
+separators: ["\n\n", "\n", "。", "！", "？", ".", "!", "?", " ", ""]
+
+# Reranker: cross-encoder re-scores the k candidates and keeps top_n
+# BAAI/bge-reranker-base is trained on Chinese + English, ~270 MB
+reranker_model: BAAI/bge-reranker-base
+reranker_top_n: 3

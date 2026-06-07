@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import datetime
 
@@ -20,9 +21,18 @@ def _get_rag() -> RagSummarizeService:
 external_data = {}
 
 
-@tool(description="从向量存储中检索参考资料，输入字符串，输出字符串")
+@tool(
+    description=(
+        "当用户询问扫地机器人产品知识、故障排查、选购建议、使用技巧时调用。"
+        "输入：贴合用户问题的核心检索词（纯文本字符串）。"
+        "输出：JSON数组，每项含 content（段落原文）和 source（来源文件名）字段。"
+        "你必须基于返回的段落内容生成回答，并在回答末尾标注引用来源，格式：[来源：文件名]。"
+        "非产品知识场景（天气、报告生成等）禁止调用。"
+    )
+)
 def rag_summarize(query: str) -> str:
-    return _get_rag().rag_summarize(query)
+    results = _get_rag().retrieve_with_sources(query)
+    return json.dumps(results, ensure_ascii=False)
 
 
 @tool(description="获取指定城市的实时天气信息，返回字符串")

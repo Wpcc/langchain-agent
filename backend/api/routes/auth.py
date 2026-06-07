@@ -1,18 +1,20 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from backend.core.dependencies import get_db
 from backend.core.security import create_access_token, hash_password, verify_password
 from backend.db.models import User
+from backend.main import limiter
 from backend.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse
 
 router = APIRouter()
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def register(req: RegisterRequest, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def register(request: Request, req: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.username == req.username).first():
         raise HTTPException(status_code=400, detail="用户名已存在")
     user = User(
@@ -27,7 +29,8 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(req: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(request: Request, req: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == req.username).first()
     if not user or not verify_password(req.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")

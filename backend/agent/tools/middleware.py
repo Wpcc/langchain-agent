@@ -34,7 +34,13 @@ def monitor_tool(
     try:
         result = _call()
         latency_ms = int((time.perf_counter() - start) * 1000)
-        logger.info("tool_success", tool=tool_name, latency_ms=latency_ms)
+        logger.info(
+            "tool_metric",
+            tool=tool_name,
+            latency_ms=latency_ms,
+            success=True,
+            output_chars=len(str(result.content)) if hasattr(result, "content") else 0,
+        )
 
         if tool_name == "fill_context_for_report":
             request.runtime.context["report"] = True
@@ -43,7 +49,13 @@ def monitor_tool(
 
     except (RetryError, Exception) as e:
         latency_ms = int((time.perf_counter() - start) * 1000)
-        logger.error("tool_failed", tool=tool_name, error=str(e), latency_ms=latency_ms)
+        logger.error(
+            "tool_metric",
+            tool=tool_name,
+            latency_ms=latency_ms,
+            success=False,
+            error=str(e),
+        )
         return ToolMessage(
             content=f"工具 [{tool_name}] 暂时不可用，请稍后重试。错误: {str(e)}",
             tool_call_id=request.tool_call.get("id", ""),
@@ -53,12 +65,16 @@ def monitor_tool(
 @before_model
 def log_before_model(state: AgentState, runtime: Runtime):
     messages = state["messages"]
-    est_tokens = sum(len(str(m.content)) for m in messages if m.content) // 4
+    # Rough estimate: 1 Chinese char ≈ 1 token, 1 English char ≈ 0.25 tokens
+    est_tokens = sum(len(str(m.content)) for m in messages if m.content) // 3
+    # Cost estimate using MINI model pricing as baseline (adjust per provider)
+    est_cost_usd = round(est_tokens * 0.0000014, 6)  # ~$1.4 per 1M input tokens
     logger.info(
         "model_call",
         message_count=len(messages),
         last_message_type=type(messages[-1]).__name__,
         estimated_input_tokens=est_tokens,
+        estimated_cost_usd=est_cost_usd,
     )
     return None
 
