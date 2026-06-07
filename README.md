@@ -1,64 +1,87 @@
 # 智扫通机器人智能客服
 
-An enterprise-level AI customer service agent for robot vacuum cleaners, built with LangChain, FastAPI, and Vue 3.
+An enterprise-level AI customer service agent for robot vacuum cleaners, built with LangGraph, FastAPI, and Vue 3.
 
 ## Features
 
-- **ReAct Agent** — multi-step reasoning with tool calling (RAG, weather, user data, report generation)
-- **RAG (Retrieval-Augmented Generation)** — knowledge base backed by ChromaDB vector store
-- **Streaming responses** — real-time character-level output via WebSocket
-- **JWT Authentication** — user register/login with Bearer token
-- **Conversation memory** — per-session history stored in Redis, persisted to PostgreSQL/SQLite
-- **Document upload** — add TXT/PDF files to the knowledge base at runtime
-- **Swagger UI** — auto-generated API docs at `/api/docs`
+- **ReAct Agent** — multi-step reasoning with tool calling via LangGraph (recursion limit guarded)
+- **Model Routing** — rule-based dispatch across 4 Doubao models (PRO / MINI / LITE / CODE) with task-specific temperature and token budgets
+- **RAG Pipeline** — BM25 + vector hybrid retrieval → CrossEncoder reranker → LLM query rewriting → citation attribution
+- **3-Layer Memory** — sliding window (10 turns) + Redis session cache + SQLite user profile store with 30-day staleness eviction
+- **Streaming responses** — real-time token output via WebSocket
+- **JWT Authentication** — register / login with rate limiting (10 req/min via slowapi)
+- **Knowledge Base UI** — Vue management panel: upload, index, delete docs + retrieval test with query-rewrite diff
+- **Auto title generation** — conversation titles generated asynchronously after the first exchange
+- **Offline Eval System** — 10 test cases, 6 scored dimensions, regression comparison CLI
+- **Docker Compose** — one-command deployment with Redis and nginx reverse proxy
 
 ## Tech Stack
 
-| Layer           | Technology                           |
-| --------------- | ------------------------------------ |
-| LLM             | ByteDance Doubao (OpenAI-compatible) |
-| Embeddings      | Alibaba DashScope text-embedding-v3  |
-| Vector DB       | ChromaDB                             |
-| Agent framework | LangChain + LangGraph                |
-| Backend         | FastAPI + Uvicorn                    |
-| Session cache   | Redis                                |
-| Database        | SQLite (dev) / PostgreSQL (prod)     |
-| Frontend        | Vue 3 + Element Plus _(in progress)_ |
+| Layer           | Technology                                        |
+| --------------- | ------------------------------------------------- |
+| LLM             | ByteDance Doubao — 4 models (PRO / MINI / LITE / CODE) |
+| Embeddings      | Alibaba DashScope `text-embedding-v3`             |
+| Vector DB       | ChromaDB                                          |
+| Reranker        | `BAAI/bge-reranker-base` (CrossEncoder)           |
+| Agent framework | LangChain + LangGraph                             |
+| Backend         | FastAPI + Uvicorn                                 |
+| Session cache   | Redis                                             |
+| Database        | SQLite (dev) / PostgreSQL (prod)                  |
+| Frontend        | Vue 3 + Element Plus + Pinia                      |
+| Deployment      | Docker Compose + nginx                            |
 
 ## Project Structure
 
 ```
 langchain-agent/
-├── backend/                    # FastAPI application
-│   ├── main.py                 # App entry point, CORS, lifespan
+├── backend/
+│   ├── main.py                    # App entry point, CORS, rate limiter, lifespan
 │   ├── api/routes/
-│   │   ├── auth.py             # POST /api/auth/register, /login
-│   │   ├── chat.py             # WS /api/chat/ws/{id}, conversation CRUD
-│   │   └── documents.py        # POST /api/documents/upload
+│   │   ├── auth.py                # POST /api/auth/register, /login (rate-limited)
+│   │   ├── chat.py                # WS /api/chat/ws/{id}, conversation CRUD
+│   │   └── documents.py           # Knowledge base CRUD + retrieval test endpoint
+│   ├── agent/
+│   │   ├── react_agent.py         # LangGraph ReAct agent (recursion_limit=15)
+│   │   └── tools/
+│   │       ├── agent_tools.py     # RAG, weather, user data, report tools
+│   │       └── middleware.py      # Tool monitoring, cost logging
 │   ├── core/
-│   │   ├── security.py         # bcrypt + JWT
-│   │   ├── dependencies.py     # FastAPI deps: get_db, get_current_user
-│   │   └── session.py          # Redis conversation store
+│   │   ├── security.py            # bcrypt + JWT
+│   │   ├── dependencies.py        # FastAPI deps: get_db, get_current_user
+│   │   ├── session.py             # 3-layer memory: window + Redis + UserProfile
+│   │   └── profile.py             # Async profile extraction + title generation
 │   ├── db/
-│   │   ├── models.py           # User, Conversation, Message
-│   │   └── session.py          # SQLAlchemy engine + SessionLocal
-│   └── schemas/                # Pydantic request/response models
-├── agent/
-│   ├── react_agent.py          # ReactAgent (stateless, user-scoped)
-│   └── tools/
-│       ├── agent_tools.py      # 7 tools: RAG, weather, user data, reports
-│       └── middleware.py       # Tool monitoring, logging, prompt switching
-├── rag/
-│   ├── rag_service.py          # RAG chain (retrieval + LLM)
-│   └── vector_store.py         # ChromaDB management + doc loading
-├── model/
-│   └── factory.py              # ChatOpenAI (Doubao) + DashScope embeddings
-├── utils/                      # Config, logging, file, path helpers
-├── prompts/                    # System prompt templates (.txt)
-├── config/                     # Non-secret YAML configs (chroma, prompts, agent)
-├── data/                       # Knowledge base documents + CSV reports
-├── app.py                      # Streamlit UI (local dev only)
-└── requirements.txt
+│   │   ├── models.py              # User, Conversation, Message, UserProfile
+│   │   └── session.py             # SQLAlchemy engine + SessionLocal
+│   ├── model/
+│   │   └── factory.py             # Model factory: chat_model, rag_model, lite_model, code_model, embed_model
+│   ├── rag/
+│   │   ├── rag_service.py         # Query rewriting + structured passage retrieval
+│   │   └── vector_store.py        # ChromaDB + BM25 + CrossEncoder reranker
+│   ├── prompts/
+│   │   └── main_prompt.txt        # System prompt with few-shot examples
+│   ├── config/
+│   │   └── chroma.yml             # Chunk size, k, reranker config
+│   ├── tests/
+│   │   └── eval/
+│   │       ├── test_cases.json    # 10 eval cases across 6 categories
+│   │       ├── metrics.py         # Retrieval, tool, keyword, citation, LLM-judge scorers
+│   │       └── run_eval.py        # CLI eval runner with regression comparison
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── views/
+│   │   │   ├── LoginView.vue      # Register + login
+│   │   │   ├── ChatView.vue       # Main chat interface with streaming
+│   │   │   └── KnowledgeView.vue  # Knowledge base management panel
+│   │   ├── stores/                # Pinia: auth, chat
+│   │   ├── api/                   # Axios HTTP client + WebSocket + knowledge API
+│   │   └── router/                # Vue Router with auth guards
+│   ├── Dockerfile
+│   └── nginx.conf
+├── backend/Dockerfile
+├── docker-compose.yml
+└── README.md
 ```
 
 ## Getting Started
@@ -66,108 +89,125 @@ langchain-agent/
 ### Prerequisites
 
 - Python 3.10+
-- Redis (for conversation session storage)
+- Node.js 18+
+- Redis (or Docker)
 
-### Installation
+### 1. Clone & install
 
 ```bash
-# Clone the repo
 git clone git@github.com:Wpcc/langchain-agent.git
 cd langchain-agent
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set up environment variables
-cp .env.example .env
-# Edit .env and fill in your API keys
 ```
 
-### Environment Variables
+```bash
+# Backend
+cd backend
+python -m venv .venv
+.venv\Scripts\activate        # Windows
+# source .venv/bin/activate   # macOS/Linux
+pip install -r requirements.txt
+```
 
-Create a `.env` file in the project root (see `.env.example`):
+```bash
+# Frontend
+cd frontend
+npm install
+```
+
+### 2. Configure environment variables
+
+Create `backend/.env`:
 
 ```env
-# ByteDance Doubao LLM
+# ── Doubao LLM (ByteDance Ark) ──────────────────────────────────────────────
 DOUBAO_API_KEY=your_doubao_api_key
 DOUBAO_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
-DOUBAO_MODEL=doubao-seed-1-8-251228
 
-# Alibaba DashScope embeddings
+# Model endpoints (get these from Ark console → Model Inference)
+DOUBAO_MODEL_PRO=doubao-seed-2-0-pro-260215
+DOUBAO_MODEL_MINI=doubao-seed-2-0-mini-260428
+DOUBAO_MODEL_LITE=doubao-seed-2-0-lite-260428
+DOUBAO_MODEL_CODE=your_code_model_endpoint_id
+
+# ── DashScope Embeddings (Alibaba) ───────────────────────────────────────────
 EMBEDDING_MODEL=text-embedding-v3
 EMBEDDING_API_KEY=your_dashscope_api_key
 
-# Database (SQLite for dev, PostgreSQL for prod)
+# ── Database ─────────────────────────────────────────────────────────────────
 DATABASE_URL=sqlite:///./zhisaotong.db
 
-# Redis
+# ── Redis ────────────────────────────────────────────────────────────────────
 REDIS_URL=redis://localhost:6379
 
-# JWT
-JWT_SECRET_KEY=your-random-secret-key-min-32-chars
+# ── JWT ──────────────────────────────────────────────────────────────────────
+JWT_SECRET_KEY=your-random-secret-key-at-least-32-chars
 JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=60
 ```
 
-### Run
+### 3. Start (development)
 
-#### Backend
+Open three terminals:
 
+**Terminal 1 — Redis**
 ```bash
-# Start Redis (required for session storage)
+# Docker (recommended on Windows)
+docker run -d -p 6379:6379 redis:7-alpine
+
+# Or native
 redis-server
-
-# Start the FastAPI backend
-uvicorn backend.main:app --reload
-
-# API docs available at
-# http://localhost:8000/api/docs
 ```
 
-#### Frontend
-
+**Terminal 2 — Backend**
 ```bash
-cd frontend
+cd langchain-agent
+backend\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload
+# API docs → http://localhost:8000/api/docs
+```
 
-# Install dependencies (first time only)
-npm install
-
-# Start the Vite dev server
+**Terminal 3 — Frontend**
+```bash
+cd langchain-agent/frontend
 npm run dev
-
-# App available at
-# http://localhost:5173
+# App → http://localhost:5173
 ```
 
-For local development without Redis, you can also run the original Streamlit UI:
+### 4. Start (Docker Compose)
 
 ```bash
-streamlit run app.py
+# From the repo root
+docker compose up --build
+# App → http://localhost
+# API → http://localhost/api/docs
 ```
 
-## API Overview
+## API Reference
 
 ### Authentication
 
-| Method | Endpoint             | Description              |
-| ------ | -------------------- | ------------------------ |
-| POST   | `/api/auth/register` | Create a new user        |
-| POST   | `/api/auth/login`    | Login, returns JWT token |
+| Method | Endpoint             | Description       | Rate limit  |
+| ------ | -------------------- | ----------------- | ----------- |
+| POST   | `/api/auth/register` | Create a new user | 10 req/min  |
+| POST   | `/api/auth/login`    | Login → JWT token | 10 req/min  |
 
 ### Chat
 
-| Method | Endpoint                                     | Description                  |
-| ------ | -------------------------------------------- | ---------------------------- |
-| WS     | `/api/chat/ws/{conversation_id}?token=<jwt>` | Streaming chat via WebSocket |
-| GET    | `/api/chat/conversations`                    | List user's conversations    |
-| POST   | `/api/chat/conversations`                    | Create a new conversation    |
-| GET    | `/api/chat/conversations/{id}/messages`      | Fetch message history        |
+| Method | Endpoint                                      | Description                   |
+| ------ | --------------------------------------------- | ----------------------------- |
+| WS     | `/api/chat/ws/{conversation_id}?token=<jwt>`  | Streaming chat via WebSocket  |
+| GET    | `/api/chat/conversations`                     | List user's conversations     |
+| POST   | `/api/chat/conversations`                     | Create a new conversation     |
+| GET    | `/api/chat/conversations/{id}/messages`       | Fetch message history         |
 
-### Documents
+### Knowledge Base
 
-| Method | Endpoint                | Description                      |
-| ------ | ----------------------- | -------------------------------- |
-| POST   | `/api/documents/upload` | Upload TXT/PDF to knowledge base |
+| Method | Endpoint                          | Description                                      |
+| ------ | --------------------------------- | ------------------------------------------------ |
+| GET    | `/api/documents`                  | List files with indexing status and chunk counts |
+| POST   | `/api/documents/upload`           | Upload TXT/PDF                                   |
+| POST   | `/api/documents/index`            | Embed all un-indexed files into ChromaDB         |
+| DELETE | `/api/documents/{filename}`       | Delete file + vectors                            |
+| POST   | `/api/documents/test-retrieval`   | Run full pipeline and return ranked chunks       |
 
 ### WebSocket Protocol
 
@@ -179,30 +219,54 @@ Server → Client:  "__ERROR__:message"  (on auth failure)
 
 ## Agent Tools
 
-The ReAct agent has access to 7 tools:
+| Tool                    | Model used | Description                                          |
+| ----------------------- | ---------- | ---------------------------------------------------- |
+| `rag_summarize`         | PRO        | Retrieve passages from vector store, return with sources |
+| `get_weather`           | —          | Get current weather for a city                       |
+| `get_user_id`           | —          | Get authenticated user's ID                          |
+| `get_current_month`     | —          | Get current year-month string                        |
+| `fetch_external_data`   | —          | Fetch user usage records from CSV                    |
+| `fill_context_for_report` | CODE     | Trigger structured report generation                 |
 
-| Tool                      | Description                              |
-| ------------------------- | ---------------------------------------- |
-| `rag_summarize`           | Retrieve relevant docs from vector store |
-| `get_weather`             | Get weather for a city                   |
-| `get_user_id`             | Get authenticated user's ID              |
-| `get_current_month`       | Get current year-month                   |
-| `fetch_external_data`     | Fetch user usage records from CSV        |
-| `fill_context_for_report` | Trigger report generation mode           |
+## Model Routing
+
+| Model  | Used for                              | Temperature |
+| ------ | ------------------------------------- | ----------- |
+| PRO    | Main agent reasoning & answer synthesis | 0.7       |
+| MINI   | RAG retrieval summarisation           | 0           |
+| LITE   | Query rewriting, profile extraction, title generation | 0.7 |
+| CODE   | Report / structured output generation | 0           |
+
+## Eval
+
+```bash
+# Run all test cases
+cd backend
+python -m tests.eval.run_eval
+
+# Run a specific category
+python -m tests.eval.run_eval --category rag
+
+# Save results for regression comparison
+python -m tests.eval.run_eval --compare baseline
+```
+
+Scored dimensions: retrieval hit, tool accuracy, answer keywords, task completion, citation presence, LLM judge.
 
 ## Roadmap
 
-- [x] ReAct agent with tool calling
-- [x] RAG with ChromaDB vector store
+- [x] ReAct agent with tool calling (LangGraph)
+- [x] Rule-based model routing (4 Doubao models)
+- [x] RAG: BM25 + vector hybrid + CrossEncoder reranker + query rewriting
+- [x] 3-layer memory: sliding window + Redis + UserProfile
 - [x] FastAPI backend with WebSocket streaming
-- [x] JWT authentication
-- [x] Redis conversation memory
-- [x] SQLAlchemy persistence (User, Conversation, Message)
-- [ ] Vue 3 + Element Plus frontend
-- [ ] RAG hybrid search (vector + BM25)
+- [x] JWT authentication with rate limiting
+- [x] Vue 3 frontend (chat + knowledge base management)
+- [x] Offline eval system (6 dimensions, 10 test cases)
+- [x] Docker Compose deployment
 - [ ] LangSmith tracing & observability
 - [ ] Alembic database migrations
-- [ ] Docker Compose deployment
+- [ ] MCP server for centralized tool registry
 
 ## License
 
