@@ -145,34 +145,36 @@ JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=60
 ```
 
-### 3. Start (development)
+### 3. Start
 
-Open three terminals:
+#### Development (no Docker required)
+
+Requires: Python 3.10+, Node.js 18+, Redis.
+
+Install Redis for Windows from [github.com/tporadowski/redis/releases](https://github.com/tporadowski/redis/releases), then open three terminals:
 
 **Terminal 1 — Redis**
-```bash
-# Docker (recommended on Windows)
-docker run -d -p 6379:6379 redis:7-alpine
-
-# Or native
-redis-server
+```powershell
+redis-server.exe
 ```
 
 **Terminal 2 — Backend**
-```bash
-cd langchain-agent
+```powershell
+# from repo root
 backend\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload
 # API docs → http://localhost:8000/api/docs
 ```
 
 **Terminal 3 — Frontend**
-```bash
-cd langchain-agent/frontend
+```powershell
+cd frontend
 npm run dev
 # App → http://localhost:5173
 ```
 
-### 4. Start (Docker Compose)
+#### Production (Docker Compose)
+
+Requires: [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 
 ```bash
 # From the repo root
@@ -180,6 +182,8 @@ docker compose up --build
 # App → http://localhost
 # API → http://localhost/api/docs
 ```
+
+> **Note:** ChromaDB and SQLite run in-process — no separate container needed for either.
 
 ## API Reference
 
