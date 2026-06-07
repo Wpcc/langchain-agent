@@ -6,7 +6,7 @@ from langchain_core.documents import Document
 from backend.rag.vector_store import VectorStoreService
 from backend.utils.prompt_loader import load_prompts
 from langchain_core.prompts import PromptTemplate
-from backend.model.factory import chat_model
+from backend.model.factory import rag_model
 from langchain_core.output_parsers import StrOutputParser
 
 class RagSummarizeService(object):
@@ -15,7 +15,7 @@ class RagSummarizeService(object):
     self.retriever = self.vector_store.get_retriever()
     self.prompt_text = load_prompts("rag")
     self.prompt_template = PromptTemplate.from_template(self.prompt_text)
-    self.model = chat_model
+    self.model = rag_model
     self.chain = self.prompt_template | self.model | StrOutputParser()
 
   def retriever_docs(self,query:str) -> List[Document]:
