@@ -3,7 +3,7 @@ from typing import Optional
 
 from langchain_core.embeddings import Embeddings
 from langchain_openai import ChatOpenAI
-from langchain_dashscope import DashScopeEmbeddings
+from langchain_community.embeddings import DashScopeEmbeddings
 
 from backend.utils.config_handler import rag_config
 

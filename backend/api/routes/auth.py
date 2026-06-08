@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from backend.core.dependencies import get_db
 from backend.core.security import create_access_token, hash_password, verify_password
 from backend.db.models import User
-from backend.main import limiter
+from backend.core.limiter import limiter
 from backend.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse
 
 router = APIRouter()
