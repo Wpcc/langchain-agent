@@ -1,23 +1,44 @@
 from contextlib import asynccontextmanager
 
+# Load .env before any LangChain import so LANGSMITH_* vars reach the SDK
+from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=False)
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 
 from backend.api.routes import auth, chat, documents
+from backend.core.limiter import limiter
 from backend.db.session import create_tables
-
-# One shared limiter — routes import this to apply per-endpoint limits
-limiter = Limiter(key_func=get_remote_address)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from backend.utils.config_handler import settings
+    from backend.utils.logger_handler import logger
+    import os
+
     create_tables()
+
+    # Warn if CODE model is still set to the API key value
+    if settings.DOUBAO_MODEL_CODE == settings.DOUBAO_API_KEY:
+        logger.warning(
+            "misconfiguration",
+            detail="DOUBAO_MODEL_CODE equals DOUBAO_API_KEY — set it to a real endpoint ID in Ark console (模型推理 → 在线推理)",
+        )
+
+    tracing_on = os.environ.get("LANGSMITH_TRACING", "").lower() == "true"
+    logger.info(
+        "startup",
+        langsmith_tracing=tracing_on,
+        langsmith_project=os.environ.get("LANGCHAIN_PROJECT", "—"),
+    )
+
     yield
 
 
