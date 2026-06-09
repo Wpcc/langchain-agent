@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import threading
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING, AsyncGenerator
 
 if TYPE_CHECKING:
@@ -90,10 +91,18 @@ async def chat_websocket(
         while True:
             query = await websocket.receive_text()
 
-            # Layer 1: sliding window — last HISTORY_WINDOW turns only
-            history = await store.get_window(conversation_id)
+            # Layer 1: sliding window with summary of dropped turns
+            history = await store.get_window_with_summary(conversation_id)
 
-            # Layer 3: inject long-term user profile at the top of history
+            # Stable-first ordering: inject current date as the earliest dynamic
+            # message so the static system prompt prefix stays cache-friendly.
+            date_str = datetime.now().strftime("%Y年%m月%d日")
+            history = [
+                {"role": "user",      "content": f"[系统信息] 当前日期：{date_str}"},
+                {"role": "assistant", "content": "好的。"},
+            ] + history
+
+            # Layer 3: inject long-term user profile after date, before history
             user_profile = profile_store.get_profile(str(user.id), db)
             history = profile_store.inject(user_profile, history)
 
@@ -112,6 +121,9 @@ async def chat_websocket(
             db.add(Message(conversation_id=conversation_id, role="user", content=query))
             db.add(Message(conversation_id=conversation_id, role="assistant", content=response_text))
             db.commit()
+
+            # Trigger background summarisation when history first overflows the window
+            await store.schedule_summary_if_needed(conversation_id)
 
             # Layer 3: fire-and-forget profile extraction (does not block streaming)
             asyncio.create_task(

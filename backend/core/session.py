@@ -12,8 +12,14 @@ from backend.utils.logger_handler import logger
 # Messages beyond this window stay in SQLite but are not sent to the LLM.
 HISTORY_WINDOW = 10  # turns → 20 messages max
 
+# When total messages exceed this threshold a background summary is triggered.
+# Set slightly above the window so the summary is ready before the next drop.
+_SUMMARY_THRESHOLD = HISTORY_WINDOW * 2 + 2  # 22 messages
+_SUMMARY_KEY = "conv_summary:{}"  # Redis key template
+
 # In-memory fallback used when Redis is unavailable (development only)
 _memory_store: dict[str, list[dict]] = defaultdict(list)
+_summary_store: dict[str, str] = {}  # fallback summary store
 
 
 class ConversationStore:
@@ -32,6 +38,66 @@ class ConversationStore:
         """Return only the last HISTORY_WINDOW turns to prevent context overflow."""
         history = await self.get_history(conversation_id)
         return history[-(HISTORY_WINDOW * 2):]
+
+    async def get_window_with_summary(self, conversation_id: str) -> list[dict]:
+        """Return the sliding window prefixed with a summary of dropped turns.
+
+        If history fits within the window, returns it as-is.
+        If history overflows, prepends a cached summary of the dropped turns
+        so the agent retains compressed awareness of the full conversation.
+        The summary is generated as a background task on first overflow and
+        cached in Redis — this method never blocks on an LLM call.
+        """
+        history = await self.get_history(conversation_id)
+        if len(history) <= HISTORY_WINDOW * 2:
+            return history
+
+        recent = history[-(HISTORY_WINDOW * 2):]
+        summary = await self._get_summary(conversation_id)
+        if summary:
+            return [
+                {"role": "user",      "content": f"[历史摘要] {summary}"},
+                {"role": "assistant", "content": "好的，我已了解之前的对话背景。"},
+            ] + recent
+        return recent
+
+    async def _get_summary(self, conversation_id: str) -> str:
+        """Read cached summary from Redis (or in-memory fallback)."""
+        key = _SUMMARY_KEY.format(conversation_id)
+        if self.redis is None:
+            return _summary_store.get(conversation_id, "")
+        raw = await self.redis.get(key)
+        return raw or ""
+
+    async def _save_summary(self, conversation_id: str, summary: str) -> None:
+        key = _SUMMARY_KEY.format(conversation_id)
+        if self.redis is None:
+            _summary_store[conversation_id] = summary
+            return
+        await self.redis.setex(key, 86400, summary)
+
+    async def schedule_summary_if_needed(self, conversation_id: str) -> None:
+        """Trigger background summarisation when history first crosses the threshold.
+
+        Called after appending each message. Fires once — skips if a summary
+        already exists so we don't re-summarise on every subsequent message.
+        """
+        import asyncio
+        history = await self.get_history(conversation_id)
+        if len(history) < _SUMMARY_THRESHOLD:
+            return
+        if await self._get_summary(conversation_id):
+            return  # already summarised
+
+        dropped = history[:-(HISTORY_WINDOW * 2)]
+
+        async def _generate():
+            from backend.core.summarizer import summarize_turns
+            summary = await summarize_turns(dropped)
+            if summary:
+                await self._save_summary(conversation_id, summary)
+
+        asyncio.create_task(_generate())
 
     async def append_message(self, conversation_id: str, role: str, content: str):
         if self.redis is None:
