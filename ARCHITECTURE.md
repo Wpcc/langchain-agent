@@ -11,14 +11,15 @@
 2. [Request Lifecycle](#2-request-lifecycle)
 3. [Agent Layer](#3-agent-layer)
 4. [Memory System (3 Layers)](#4-memory-system-3-layers)
-5. [RAG Pipeline](#5-rag-pipeline)
-6. [Model Routing](#6-model-routing)
-7. [Middleware Hooks](#7-middleware-hooks)
-8. [Background Tasks](#8-background-tasks)
-9. [Persistence Layer](#9-persistence-layer)
-10. [Frontend Architecture](#10-frontend-architecture)
-11. [Eval System](#11-eval-system)
-12. [Deployment](#12-deployment)
+5. [Context Engineering](#5-context-engineering)
+6. [RAG Pipeline](#6-rag-pipeline)
+7. [Model Routing](#7-model-routing)
+8. [Middleware Hooks](#8-middleware-hooks)
+9. [Background Tasks](#9-background-tasks)
+10. [Persistence Layer](#10-persistence-layer)
+11. [Frontend Architecture](#11-frontend-architecture)
+12. [Eval System](#12-eval-system)
+13. [Deployment](#13-deployment)
 
 ---
 
@@ -81,23 +82,24 @@ Why JWT instead of sessions? JWTs are stateless — the backend doesn't need to 
 User types a message → ChatView.handleSend()
   └─► WebSocket.send(query)
         └─► chat.py: chat_websocket()
-              1. Authenticate JWT from query param (?token=...)
-              2. Get/create Conversation row in SQLite
-              3. Connect to Redis → ConversationStore
-              4. Load last 10 turns from Redis (Layer 1: sliding window)
-              5. Load UserProfile from SQLite (Layer 3: long-term facts)
-              6. Inject profile as fake exchange at top of history
-              7. Run ReactAgent.execute_stream(query, history) in a thread
+              1.  Authenticate JWT from query param (?token=...)
+              2.  Get/create Conversation row in SQLite
+              3.  Connect to Redis → ConversationStore
+              4.  get_window_with_summary() → [summary?] + last 10 turns
+              5.  Inject current date as first dynamic message
+              6.  Inject UserProfile facts after date
+              7.  Final context order: [date] → [profile] → [summary?] → [history]
+              8.  Run ReactAgent.execute_stream(query, context) in a thread
                     └─► LangGraph ReAct loop streams tokens
-              8. Stream each token chunk → WebSocket → ChatView appends to bubble
-              9. Send "__END__" → ChatView finalizes the message
-             10. Persist user + assistant messages to Redis (Layer 2)
-             11. Persist user + assistant messages to SQLite
-             12. Fire-and-forget: extract user facts → update UserProfile
-             13. Fire-and-forget: generate conversation title (first exchange only)
+              9.  Stream each token chunk → WebSocket → ChatView appends to bubble
+              10. Send "__END__" → ChatView finalizes the message
+              11. Persist user + assistant messages to Redis + SQLite
+              12. schedule_summary_if_needed() — background summarisation trigger
+              13. Fire-and-forget: extract user facts → update UserProfile
+              14. Fire-and-forget: generate conversation title (first exchange only)
 ```
 
-**Why run the agent in a thread (step 7)?**
+**Why run the agent in a thread (step 8)?**
 LangGraph's `.stream()` is synchronous. FastAPI's WebSocket handler is async. Running synchronous code directly in an async function blocks the event loop, freezing all other connections. Threading bridges the gap: the sync generator runs in a worker thread and puts chunks into an `asyncio.Queue`, which the async handler drains without blocking.
 
 ---
@@ -146,12 +148,21 @@ The three layers solve different problems at different time scales:
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  Layer 1: Sliding Window                            │
-│  What: Last 10 turns (20 messages) from Redis       │
+│  Layer 1: Sliding Window + Conversation Summary     │
+│                                                     │
+│  Window: Last 10 turns (20 messages) from Redis     │
 │  Why: Prevents context window overflow.             │
-│       Older turns stay in SQLite for audit but      │
-│       are not sent to the LLM.                      │
-│  TTL: Per-session (24h Redis key)                   │
+│       Older turns stay in SQLite for audit.         │
+│                                                     │
+│  Summary: When history first exceeds 22 messages,  │
+│  a background task compresses the dropped turns     │
+│  into a ≤100 char summary (lite_model).             │
+│  Cached in Redis as conv_summary:{id}.              │
+│  Why: Pure truncation loses early context entirely. │
+│  A summary preserves intent at near-zero token cost.│
+│                                                     │
+│  get_window_with_summary() returns:                 │
+│    [summary message] + [last 10 turns]              │
 └──────────────────────┬──────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────┐
@@ -160,7 +171,8 @@ The three layers solve different problems at different time scales:
 │  Why: Reading from Redis is O(1) and ~1ms.          │
 │       SQLite has higher latency and requires        │
 │       a DB session. Redis is the hot path.          │
-│  Key: conv:{conversation_id}  TTL: 86400s           │
+│  Keys: conv:{id} → messages  TTL: 86400s            │
+│        conv_summary:{id} → summary  TTL: 86400s     │
 │  Fallback: in-memory dict if Redis is unavailable   │
 └──────────────────────┬──────────────────────────────┘
                        │
@@ -176,6 +188,26 @@ The three layers solve different problems at different time scales:
 │             exchange so it fits any message format  │
 └─────────────────────────────────────────────────────┘
 ```
+
+### Conversation Summarization Detail
+
+When total message count first crosses `HISTORY_WINDOW * 2 + 2 = 22`:
+
+```
+schedule_summary_if_needed()
+  └─► checks: is len(history) >= 22?  AND  no existing summary?
+        └─► asyncio.create_task(_generate())        ← non-blocking
+              └─► summarize_turns(dropped_messages)
+                    └─► lite_model: "将以下对话历史压缩为100字以内摘要..."
+                          └─► saved to Redis conv_summary:{id}
+
+Next request:
+  get_window_with_summary()
+    └─► reads summary from Redis (cache hit, no LLM call)
+          └─► returns [summary_msg, ack_msg] + [recent 20 messages]
+```
+
+The summarisation is **never in the critical path** — it fires after the response is already sent to the user.
 
 ### Profile Injection Detail
 
@@ -197,7 +229,91 @@ User facts like device model or usage habits change. Keeping stale facts (e.g. t
 
 ---
 
-## 5. RAG Pipeline
+## 5. Context Engineering
+
+Context engineering is about deciding **what goes into the context window, in what order, and how to compress what doesn't fit**. This is one of the most important skills for a production Agent Engineer.
+
+### The Context Window Budget
+
+Every request builds the context from scratch. The final message list sent to the LLM is assembled in this exact order:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  [STABLE — cached by the LLM provider]                         │
+│                                                                 │
+│  1. System prompt (main_prompt.txt)          ~600 tokens        │
+│     Role, tool rules, few-shot examples                         │
+│     Never changes between requests → maximum cache hits         │
+│                                                                 │
+│  2. Tool schemas (sent by LangGraph via API tools= param)       │
+│     Parameter names/types/descriptions                          │
+│     Also stable → also cached                                   │
+├─────────────────────────────────────────────────────────────────┤
+│  [DYNAMIC — different every request]                            │
+│                                                                 │
+│  3. Current date injection          ~10 tokens                  │
+│     {"role":"user", "content":"[系统信息] 当前日期：2026年06月09日"}│
+│     First dynamic message — placed here so cache boundary is    │
+│     as late as possible in the sequence                         │
+│                                                                 │
+│  4. UserProfile injection (if exists)   ~30–80 tokens           │
+│     {"role":"user", "content":"[记忆注入] 设备型号：XX8 Pro；…"}  │
+│     Changes per-user, not per-request                           │
+│                                                                 │
+│  5. Conversation summary (if history > 22 msgs)  ~50 tokens     │
+│     {"role":"user", "content":"[历史摘要] 用户询问了滤网更换…"}   │
+│     Compressed representation of dropped turns                  │
+│                                                                 │
+│  6. Recent conversation history   ~800–2000 tokens              │
+│     Last 10 turns (20 messages) from Redis                      │
+│                                                                 │
+│  7. Current user query            ~20–200 tokens                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Why Order Matters: Prompt Caching
+
+LLM providers (Anthropic, OpenAI) cache the **prefix** of the input token sequence. If the first N tokens are identical to a previous request, the provider skips re-processing them and charges a fraction of the normal price (~10% for Anthropic).
+
+```
+Request 1:  [system][tools][date][profile][history][query1]
+                                 ↑
+                          cache boundary — everything before here is reused
+
+Request 2:  [system][tools][date][profile][history][query2]
+            ──────────────── CACHED ────────────── NEW
+```
+
+**The rule:** put stable content before dynamic content. Dynamic content injected inside the system prompt would break caching on every single request.
+
+### Compression Strategies Used
+
+| Problem | Strategy | Implementation |
+|---|---|---|
+| Context overflow | Sliding window | `HISTORY_WINDOW = 10` turns |
+| Lost early context | Conversation summary | `summarizer.py` + Redis cache |
+| Stale user facts | 30-day expiry | `PROFILE_STALE_DAYS = 30` |
+| Verbose tool docs | Compact descriptions | Tool rules in prompt, schemas via API |
+
+### How Summarisation Avoids Latency
+
+A naive implementation would generate the summary in the critical path (before streaming the response). This project avoids that:
+
+```
+Message N arrives:
+  1. get_window_with_summary() → reads CACHED summary from Redis  (0ms)
+  2. Stream response to user                                       (agent runs)
+  3. Persist messages
+  4. schedule_summary_if_needed()
+       └─► only fires if: count >= 22 AND no existing summary
+             └─► asyncio.create_task() → runs AFTER response sent (non-blocking)
+```
+
+The user never waits for a summarisation LLM call. The summary is ready in Redis before the conversation is long enough to need it again.
+
+---
+
+## 6. RAG Pipeline
 
 The RAG pipeline has four stages. Each stage solves a specific failure mode:
 
@@ -245,7 +361,7 @@ When indexing, each file's MD5 hash is checked against a local store (`md5_hex_s
 
 ---
 
-## 6. Model Routing
+## 7. Model Routing
 
 Using one model for everything is expensive and slow. Different tasks have different requirements:
 
@@ -257,6 +373,7 @@ RAG answer synthesis         PRO      0.7    —           Needs nuanced citatio
 Query rewriting              LITE     0.7    —           Simple rephrasing, cheap
 Profile fact extraction      LITE     0.7    —           Structured extraction, high freq
 Title generation             LITE     0.7    —           Short creative task, cheap
+Conversation summarisation   LITE     0.7    —           Compression task, high frequency
 Report / structured output   CODE     0.0    —           Low temp for deterministic output
 ```
 
@@ -266,7 +383,7 @@ Report / structured output   CODE     0.0    —           Low temp for determin
 
 ---
 
-## 7. Middleware Hooks
+## 8. Middleware Hooks
 
 Three hooks wrap around the LangGraph execution. They use LangChain's agent middleware API.
 
@@ -293,9 +410,9 @@ When `fill_context_for_report` is called, it sets `context["report"] = True`. Th
 
 ---
 
-## 8. Background Tasks
+## 9. Background Tasks
 
-Two operations run as fire-and-forget `asyncio.create_task()` after each exchange. They must not block the WebSocket response.
+Three operations run as fire-and-forget `asyncio.create_task()` after each exchange. None of them block the WebSocket response — the user's tokens stream uninterrupted.
 
 ### Profile Extraction
 
@@ -322,9 +439,21 @@ On first exchange only (when conv.title == "新对话"):
 
 **Why fire-and-forget?** The user doesn't need to wait for a title. Blocking the WebSocket handler for an extra LLM call (even LITE) would add 500ms+ latency to every first message.
 
+### Conversation Summarisation
+
+```
+After message count first crosses 22 (= HISTORY_WINDOW * 2 + 2):
+  schedule_summary_if_needed()
+    └─► asyncio.create_task(_generate())
+          └─► summarize_turns(dropped_turns) via lite_model
+                └─► saved to Redis conv_summary:{id} (TTL: 24h)
+```
+
+The threshold is `HISTORY_WINDOW * 2 + 2` (not exactly 20) so the summary is generated one exchange *before* it's actually needed, ensuring it's cached in Redis by the time the next `get_window_with_summary()` call needs it.
+
 ---
 
-## 9. Persistence Layer
+## 10. Persistence Layer
 
 Three storage systems, each chosen for a specific reason:
 
@@ -368,7 +497,7 @@ Three storage systems, each chosen for a specific reason:
 
 ---
 
-## 10. Frontend Architecture
+## 11. Frontend Architecture
 
 ```
 src/
@@ -412,7 +541,7 @@ The Axios interceptor redirects to `/login` on any 401 response, **except** when
 
 ---
 
-## 11. Eval System
+## 12. Eval System
 
 ```
 backend/tests/eval/
@@ -462,7 +591,7 @@ python -m tests.eval.run_eval --compare v2
 
 ---
 
-## 12. Deployment
+## 13. Deployment
 
 ### Development (no Docker)
 
