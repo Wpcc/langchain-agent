@@ -1,3 +1,4 @@
+import os
 from typing import List
 
 from langchain_chroma import Chroma
