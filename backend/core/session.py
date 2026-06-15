@@ -15,11 +15,13 @@ HISTORY_WINDOW = 10  # turns → 20 messages max
 # When total messages exceed this threshold a background summary is triggered.
 # Set slightly above the window so the summary is ready before the next drop.
 _SUMMARY_THRESHOLD = HISTORY_WINDOW * 2 + 2  # 22 messages
-_SUMMARY_KEY = "conv_summary:{}"  # Redis key template
+_SUMMARY_KEY = "conv_summary:{}"         # Redis key template
+_SUMMARY_CURSOR_KEY = "conv_summary_cursor:{}"  # how many messages the summary covers
 
 # In-memory fallback used when Redis is unavailable (development only)
 _memory_store: dict[str, list[dict]] = defaultdict(list)
-_summary_store: dict[str, str] = {}  # fallback summary store
+_summary_store: dict[str, str] = {}   # fallback summary store
+_cursor_store: dict[str, int] = {}    # fallback cursor store
 
 
 class ConversationStore:
@@ -76,26 +78,50 @@ class ConversationStore:
             return
         await self.redis.setex(key, 86400, summary)
 
-    async def schedule_summary_if_needed(self, conversation_id: str) -> None:
-        """Trigger background summarisation when history first crosses the threshold.
+    async def _get_cursor(self, conversation_id: str) -> int:
+        """Return how many leading messages are already covered by the stored summary."""
+        key = _SUMMARY_CURSOR_KEY.format(conversation_id)
+        if self.redis is None:
+            return _cursor_store.get(conversation_id, 0)
+        raw = await self.redis.get(key)
+        return int(raw) if raw else 0
 
-        Called after appending each message. Fires once — skips if a summary
-        already exists so we don't re-summarise on every subsequent message.
+    async def _save_cursor(self, conversation_id: str, cursor: int) -> None:
+        key = _SUMMARY_CURSOR_KEY.format(conversation_id)
+        if self.redis is None:
+            _cursor_store[conversation_id] = cursor
+            return
+        await self.redis.setex(key, 86400, str(cursor))
+
+    async def schedule_summary_if_needed(self, conversation_id: str) -> None:
+        """Trigger background summarisation whenever new messages fall outside the window.
+
+        On first overflow this summarises all dropped turns.
+        On subsequent overflows it merges the existing summary with the
+        newly dropped turns (those beyond the cursor) so no messages are silently lost.
         """
         import asyncio
         history = await self.get_history(conversation_id)
         if len(history) < _SUMMARY_THRESHOLD:
             return
-        if await self._get_summary(conversation_id):
-            return  # already summarised
 
         dropped = history[:-(HISTORY_WINDOW * 2)]
+        cursor = await self._get_cursor(conversation_id)
+        if len(dropped) <= cursor:
+            return  # nothing new has been dropped since last summary
+
+        newly_dropped = dropped[cursor:]
+        existing_summary = await self._get_summary(conversation_id)
 
         async def _generate():
-            from backend.core.summarizer import summarize_turns
-            summary = await summarize_turns(dropped)
+            from backend.core.summarizer import summarize_turns, summarize_incremental
+            if existing_summary:
+                summary = await summarize_incremental(existing_summary, newly_dropped)
+            else:
+                summary = await summarize_turns(dropped)
             if summary:
                 await self._save_summary(conversation_id, summary)
+                await self._save_cursor(conversation_id, len(dropped))
 
         asyncio.create_task(_generate())
 

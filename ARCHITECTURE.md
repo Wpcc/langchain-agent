@@ -154,10 +154,14 @@ The three layers solve different problems at different time scales:
 │  Why: Prevents context window overflow.             │
 │       Older turns stay in SQLite for audit.         │
 │                                                     │
-│  Summary: When history first exceeds 22 messages,  │
-│  a background task compresses the dropped turns     │
-│  into a ≤100 char summary (lite_model).             │
-│  Cached in Redis as conv_summary:{id}.              │
+│  Summary: When history exceeds 22 messages a        │
+│  background task compresses the dropped turns into  │
+│  a ≤100 char summary (lite_model). On every further │
+│  overflow, newly dropped turns are merged into the  │
+│  existing summary (incremental summarisation) so    │
+│  no messages are silently lost on a 2nd+ overflow.  │
+│  Tracked by a cursor (conv_summary_cursor:{id})     │
+│  that records how many messages the summary covers. │
 │  Why: Pure truncation loses early context entirely. │
 │  A summary preserves intent at near-zero token cost.│
 │                                                     │
@@ -171,8 +175,9 @@ The three layers solve different problems at different time scales:
 │  Why: Reading from Redis is O(1) and ~1ms.          │
 │       SQLite has higher latency and requires        │
 │       a DB session. Redis is the hot path.          │
-│  Keys: conv:{id} → messages  TTL: 86400s            │
-│        conv_summary:{id} → summary  TTL: 86400s     │
+│  Keys: conv:{id} → messages           TTL: 86400s   │
+│        conv_summary:{id} → summary    TTL: 86400s   │
+│        conv_summary_cursor:{id} → int TTL: 86400s   │
 │  Fallback: in-memory dict if Redis is unavailable   │
 └──────────────────────┬──────────────────────────────┘
                        │
@@ -191,23 +196,41 @@ The three layers solve different problems at different time scales:
 
 ### Conversation Summarization Detail
 
-When total message count first crosses `HISTORY_WINDOW * 2 + 2 = 22`:
+The system handles repeated overflows correctly via a **cursor** that tracks how many messages the current summary already covers.
+
+**First overflow** (history crosses 22 messages):
 
 ```
 schedule_summary_if_needed()
-  └─► checks: is len(history) >= 22?  AND  no existing summary?
+  └─► len(history) >= 22  AND  cursor == 0 (nothing summarised yet)
         └─► asyncio.create_task(_generate())        ← non-blocking
-              └─► summarize_turns(dropped_messages)
+              └─► summarize_turns(all dropped messages)
                     └─► lite_model: "将以下对话历史压缩为100字以内摘要..."
                           └─► saved to Redis conv_summary:{id}
-
-Next request:
-  get_window_with_summary()
-    └─► reads summary from Redis (cache hit, no LLM call)
-          └─► returns [summary_msg, ack_msg] + [recent 20 messages]
+                          └─► cursor saved to Redis conv_summary_cursor:{id} = len(dropped)
 ```
 
-The summarisation is **never in the critical path** — it fires after the response is already sent to the user.
+**Subsequent overflows** (more messages fall outside the window):
+
+```
+schedule_summary_if_needed()
+  └─► len(dropped) > cursor  → new messages have been dropped since last summary
+        └─► asyncio.create_task(_generate())        ← non-blocking
+              └─► summarize_incremental(existing_summary, dropped[cursor:])
+                    └─► lite_model: "将已有摘要与新增对话合并为100字以内摘要..."
+                          └─► updated summary saved to Redis
+                          └─► cursor advanced to len(dropped)
+```
+
+**Next request (any overflow state):**
+
+```
+get_window_with_summary()
+  └─► reads summary from Redis (cache hit, no LLM call)
+        └─► returns [summary_msg, ack_msg] + [recent 20 messages]
+```
+
+The summarisation is **never in the critical path** — it fires after the response is already sent to the user. The cursor and summary share the same 24-hour TTL so they always expire together.
 
 ### Profile Injection Detail
 
@@ -305,8 +328,9 @@ Message N arrives:
   2. Stream response to user                                       (agent runs)
   3. Persist messages
   4. schedule_summary_if_needed()
-       └─► only fires if: count >= 22 AND no existing summary
+       └─► only fires if: count >= 22 AND len(dropped) > cursor
              └─► asyncio.create_task() → runs AFTER response sent (non-blocking)
+             └─► first overflow: full summarise; later overflows: incremental merge
 ```
 
 The user never waits for a summarisation LLM call. The summary is ready in Redis before the conversation is long enough to need it again.
@@ -442,14 +466,19 @@ On first exchange only (when conv.title == "新对话"):
 ### Conversation Summarisation
 
 ```
-After message count first crosses 22 (= HISTORY_WINDOW * 2 + 2):
+After message count crosses 22 (= HISTORY_WINDOW * 2 + 2):
   schedule_summary_if_needed()
-    └─► asyncio.create_task(_generate())
-          └─► summarize_turns(dropped_turns) via lite_model
-                └─► saved to Redis conv_summary:{id} (TTL: 24h)
+    └─► if len(dropped) > cursor:          ← new messages outside window
+          asyncio.create_task(_generate())
+            First overflow:  summarize_turns(dropped)
+            Later overflows: summarize_incremental(old_summary, dropped[cursor:])
+              └─► updated summary → Redis conv_summary:{id}   (TTL: 24h)
+              └─► cursor advanced → Redis conv_summary_cursor:{id} (TTL: 24h)
 ```
 
 The threshold is `HISTORY_WINDOW * 2 + 2` (not exactly 20) so the summary is generated one exchange *before* it's actually needed, ensuring it's cached in Redis by the time the next `get_window_with_summary()` call needs it.
+
+The **cursor** is what prevents re-summarising already-covered messages and ensures each incremental call only processes the *newly* dropped turns.
 
 ---
 

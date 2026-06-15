@@ -142,7 +142,7 @@ async def chat_websocket(
         if redis_client is not None:
             await redis_client.aclose()
 
-
+# 列出所有对话
 @router.get("/conversations", response_model=list[ConversationSchema])
 def list_conversations(
     user: User = Depends(get_current_user),
@@ -156,7 +156,7 @@ def list_conversations(
     )
     return [ConversationSchema(id=c.id, title=c.title, created_at=c.created_at) for c in convs]
 
-
+# 新建对话
 @router.post("/conversations", response_model=ConversationSchema, status_code=201)
 def create_conversation(
     user: User = Depends(get_current_user),
@@ -168,7 +168,7 @@ def create_conversation(
     db.refresh(conv)
     return ConversationSchema(id=conv.id, title=conv.title, created_at=conv.created_at)
 
-
+# 删除对话+消息
 @router.delete("/conversations/{conversation_id}", status_code=204)
 def delete_conversation(
     conversation_id: str,
@@ -185,7 +185,7 @@ def delete_conversation(
     db.delete(conv)
     db.commit()
 
-
+# 拉历史消息
 @router.get("/conversations/{conversation_id}/messages", response_model=ChatHistoryResponse)
 def get_messages(
     conversation_id: str,
