@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from backend.core.dependencies import get_current_user, get_db
 from backend.core.security import decode_token
+from backend.core.episodic_memory import episodic_store
 from backend.core.session import ConversationStore, get_redis, profile_store
 from backend.core.profile import update_user_profile_async, generate_title_async
 from backend.db.models import Conversation, Message, User
@@ -91,8 +92,16 @@ async def chat_websocket(
         while True:
             query = await websocket.receive_text()
 
+            if len(query) > 1000:
+                await websocket.send_text("__ERROR__:您的消息过长，请将内容控制在1000字以内。")
+                continue
+
             # Layer 1: sliding window with summary of dropped turns
             history = await store.get_window_with_summary(conversation_id)
+
+            # Layer 3: inject relevant past episodes from other conversations
+            episodes = episodic_store.retrieve(str(user.id), conversation_id, query)
+            history = episodic_store.inject(episodes, history)
 
             # Stable-first ordering: inject current date as the earliest dynamic
             # message so the static system prompt prefix stays cache-friendly.
@@ -102,7 +111,7 @@ async def chat_websocket(
                 {"role": "assistant", "content": "好的。"},
             ] + history
 
-            # Layer 3: inject long-term user profile after date, before history
+            # Layer 2: inject long-term user profile after date, before history
             user_profile = profile_store.get_profile(str(user.id), db)
             history = profile_store.inject(user_profile, history)
 
@@ -123,7 +132,7 @@ async def chat_websocket(
             db.commit()
 
             # Trigger background summarisation when history first overflows the window
-            await store.schedule_summary_if_needed(conversation_id)
+            await store.schedule_summary_if_needed(conversation_id, str(user.id))
 
             # Layer 3: fire-and-forget profile extraction (does not block streaming)
             asyncio.create_task(

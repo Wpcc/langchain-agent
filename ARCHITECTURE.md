@@ -10,7 +10,7 @@
 1. [System Overview](#1-system-overview)
 2. [Request Lifecycle](#2-request-lifecycle)
 3. [Agent Layer](#3-agent-layer)
-4. [Memory System (3 Layers)](#4-memory-system-3-layers)
+4. [Memory System (4 Layers)](#4-memory-system-4-layers)
 5. [Context Engineering](#5-context-engineering)
 6. [RAG Pipeline](#6-rag-pipeline)
 7. [Model Routing](#7-model-routing)
@@ -91,6 +91,8 @@ User types a message → ChatView.handleSend()
               7.  Final context order: [date] → [profile] → [summary?] → [history]
               8.  Run ReactAgent.execute_stream(query, context) in a thread
                     └─► LangGraph ReAct loop streams tokens
+                    └─► Layer 0 working memory lives here (tool I/O, reasoning steps)
+                          cleared automatically when the call returns
               9.  Stream each token chunk → WebSocket → ChatView appends to bubble
               10. Send "__END__" → ChatView finalizes the message
               11. Persist user + assistant messages to Redis + SQLite
@@ -142,12 +144,26 @@ Content can be either a plain string or a list of content blocks (OpenAI format)
 
 ---
 
-## 4. Memory System (3 Layers)
+## 4. Memory System (4 Layers)
 
-The three layers solve different problems at different time scales:
+The four layers solve different problems at different time scales:
 
 ```
 ┌─────────────────────────────────────────────────────┐
+│  Layer 0: Working Memory (single agent run)         │
+│                                                     │
+│  What: LangGraph's internal message list for the    │
+│  current ReAct loop — intermediate reasoning steps, │
+│  tool call inputs/outputs, and partial responses.   │
+│  Where: In-process Python dict, never persisted.    │
+│  TTL: Cleared when execute_stream() returns.        │
+│  Why: Tool outputs must not bleed into the next     │
+│  turn's history. Keeping working state separate     │
+│  from conversation history prevents the agent from  │
+│  replaying stale tool results on the next query.    │
+└──────────────────────┬──────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────┐
 │  Layer 1: Sliding Window + Conversation Summary     │
 │                                                     │
 │  Window: Last 10 turns (20 messages) from Redis     │
@@ -182,7 +198,7 @@ The three layers solve different problems at different time scales:
 └──────────────────────┬──────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────┐
-│  Layer 3: SQLite UserProfile (long-term facts)      │
+│  Layer 2: SQLite UserProfile (long-term facts)      │
 │  What: {key: value} facts about the user            │
 │        e.g. {"设备型号": "XX8 Pro", "使用习惯": "每天"}  │
 │  Why: Facts persist across sessions. The LLM        │
@@ -191,6 +207,24 @@ The three layers solve different problems at different time scales:
 │  Staleness: facts older than 30 days are dropped    │
 │  Injection: prepended as a fake user→assistant      │
 │             exchange so it fits any message format  │
+└──────────────────────┬──────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────┐
+│  Layer 3: Episodic Memory (cross-session events)    │
+│  What: Semantic vector index of past conversation   │
+│        summaries. One entry per conversation,       │
+│        upserted each time the summary is updated.   │
+│  Where: ChromaDB (episodic_memory collection),      │
+│         same persist dir as knowledge base.         │
+│  Write: fires inside schedule_summary_if_needed()   │
+│         background task after each summary update   │
+│  Read: top-2 episodes most relevant to the current  │
+│        query, excluding the active conversation     │
+│  Why: Layer 2 stores facts ("设备型号: XX8 Pro").    │
+│  Layer 3 stores events ("complained about motor     │
+│  noise after cleaning"). Facts answer "who is this  │
+│  user?"; episodes answer "what has this user        │
+│  experienced before?"                               │
 └─────────────────────────────────────────────────────┘
 ```
 

@@ -93,12 +93,13 @@ class ConversationStore:
             return
         await self.redis.setex(key, 86400, str(cursor))
 
-    async def schedule_summary_if_needed(self, conversation_id: str) -> None:
+    async def schedule_summary_if_needed(self, conversation_id: str, user_id: str) -> None:
         """Trigger background summarisation whenever new messages fall outside the window.
 
         On first overflow this summarises all dropped turns.
         On subsequent overflows it merges the existing summary with the
         newly dropped turns (those beyond the cursor) so no messages are silently lost.
+        Also updates the Layer 3 episodic index with the latest summary.
         """
         import asyncio
         history = await self.get_history(conversation_id)
@@ -107,8 +108,8 @@ class ConversationStore:
 
         dropped = history[:-(HISTORY_WINDOW * 2)]
         cursor = await self._get_cursor(conversation_id)
-        if len(dropped) <= cursor:
-            return  # nothing new has been dropped since last summary
+        if len(dropped) - cursor < 2:
+            return  # wait for a full turn (user+assistant) to drop before re-summarising
 
         newly_dropped = dropped[cursor:]
         existing_summary = await self._get_summary(conversation_id)
@@ -122,6 +123,12 @@ class ConversationStore:
             if summary:
                 await self._save_summary(conversation_id, summary)
                 await self._save_cursor(conversation_id, len(dropped))
+                # Layer 3: update episodic index so this conversation is searchable
+                from backend.core.episodic_memory import episodic_store
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(
+                    None, lambda: episodic_store.save(user_id, conversation_id, summary)
+                )
 
         asyncio.create_task(_generate())
 
