@@ -15,6 +15,14 @@ from langchain_core.documents import Document
 from backend.model.factory import lite_model
 from backend.rag.vector_store import VectorStoreService
 from backend.utils.logger_handler import logger
+from backend.utils.telemetry import get_tracer
+
+_INTENT_PROMPT = (
+    "判断以下用户问题是否需要查询扫地机器人产品知识库"
+    "（如：使用方法、故障排除、维护保养、规格参数、选购建议等）。\n"
+    "只输出 yes 或 no，不要其他内容。\n\n"
+    "问题：{query}"
+)
 
 _REWRITE_PROMPT = (
     "将下面的用户问题改写为一个独立的、适合向量检索的查询语句。"
@@ -28,6 +36,24 @@ class RagSummarizeService:
     def __init__(self):
         self.vector_store = VectorStoreService()
         self.retriever = self.vector_store.get_retriever()
+
+    def _is_knowledge_query(self, query: str) -> bool:
+        """Return False for conversational turns that don't need KB retrieval.
+
+        Fails open: if the classification call errors, retrieval proceeds anyway
+        so a transient LLM failure never silently breaks RAG.
+        """
+        try:
+            result = lite_model.invoke(
+                _INTENT_PROMPT.format(query=query)
+            ).content.strip().lower()
+            if not result.startswith("yes"):
+                logger.info("rag_intent_skip", query=query[:80])
+                return False
+            return True
+        except Exception as e:
+            logger.warning("rag_intent_check_failed", error=str(e))
+            return True  # fail open
 
     def _rewrite_query(self, query: str) -> str:
         """Rewrite a potentially ambiguous or context-dependent query into a
@@ -73,15 +99,27 @@ class RagSummarizeService:
 
         Output format consumed by the rag_summarize agent tool:
         [{"content": "...", "source": "filename.txt"}, ...]
+        Skips the full retrieval pipeline for non-knowledge queries.
         """
-        docs = self.retriever_docs(query)
-        return [
-            {
-                "content": doc.page_content,
-                "source": os.path.basename(doc.metadata.get("source", "未知来源")),
-            }
-            for doc in docs
-        ]
+        with get_tracer().start_as_current_span("rag.retrieve") as span:
+            span.set_attribute("query.length", len(query))
+
+            with get_tracer().start_as_current_span("rag.intent_check"):
+                is_knowledge = self._is_knowledge_query(query)
+
+            span.set_attribute("is_knowledge_query", is_knowledge)
+            if not is_knowledge:
+                return []
+
+            docs = self.retriever_docs(query)
+            span.set_attribute("doc_count", len(docs))
+            return [
+                {
+                    "content": doc.page_content,
+                    "source": os.path.basename(doc.metadata.get("source", "未知来源")),
+                }
+                for doc in docs
+            ]
 
 
 if __name__ == '__main__':

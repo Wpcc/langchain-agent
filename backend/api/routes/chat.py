@@ -17,6 +17,7 @@ from backend.core.dependencies import get_current_user, get_db
 from backend.core.security import decode_token
 from backend.core.episodic_memory import episodic_store
 from backend.core.session import ConversationStore, get_redis, profile_store
+from backend.utils.telemetry import get_tracer
 from backend.core.profile import update_user_profile_async, generate_title_async
 from backend.db.models import Conversation, Message, User
 from backend.schemas.chat import ChatHistoryResponse, ConversationSchema, MessageSchema
@@ -96,54 +97,62 @@ async def chat_websocket(
                 await websocket.send_text("__ERROR__:您的消息过长，请将内容控制在1000字以内。")
                 continue
 
-            # Layer 1: sliding window with summary of dropped turns
-            history = await store.get_window_with_summary(conversation_id)
+            with get_tracer().start_as_current_span("chat.message") as span:
+                span.set_attribute("user.id", str(user.id))
+                span.set_attribute("conversation.id", conversation_id)
+                span.set_attribute("query.length", len(query))
 
-            # Layer 3: inject relevant past episodes from other conversations
-            episodes = episodic_store.retrieve(str(user.id), conversation_id, query)
-            history = episodic_store.inject(episodes, history)
+                # Layer 1: sliding window with summary of dropped turns
+                history = await store.get_window_with_summary(conversation_id)
 
-            # Stable-first ordering: inject current date as the earliest dynamic
-            # message so the static system prompt prefix stays cache-friendly.
-            date_str = datetime.now().strftime("%Y年%m月%d日")
-            history = [
-                {"role": "user",      "content": f"[系统信息] 当前日期：{date_str}"},
-                {"role": "assistant", "content": "好的。"},
-            ] + history
+                # Layer 3: inject relevant past episodes from other conversations
+                episodes = episodic_store.retrieve(str(user.id), conversation_id, query)
+                span.set_attribute("episodes.count", len(episodes))
+                history = episodic_store.inject(episodes, history)
 
-            # Layer 2: inject long-term user profile after date, before history
-            user_profile = profile_store.get_profile(str(user.id), db)
-            history = profile_store.inject(user_profile, history)
+                # Stable-first ordering: inject current date as the earliest dynamic
+                # message so the static system prompt prefix stays cache-friendly.
+                date_str = datetime.now().strftime("%Y年%m月%d日")
+                history = [
+                    {"role": "user",      "content": f"[系统信息] 当前日期：{date_str}"},
+                    {"role": "assistant", "content": "好的。"},
+                ] + history
 
-            full_response = ""
+                # Layer 2: inject long-term user profile after date, before history
+                user_profile = profile_store.get_profile(str(user.id), db)
+                history = profile_store.inject(user_profile, history)
 
-            async for chunk in _stream_agent(agent, query, history):
-                full_response += chunk
-                await websocket.send_text(chunk)
+                full_response = ""
 
-            await websocket.send_text("__END__")
+                async for chunk in _stream_agent(agent, query, history):
+                    full_response += chunk
+                    await websocket.send_text(chunk)
 
-            response_text = full_response.strip()
-            await store.append_message(conversation_id, "user", query)
-            await store.append_message(conversation_id, "assistant", response_text)
+                await websocket.send_text("__END__")
 
-            db.add(Message(conversation_id=conversation_id, role="user", content=query))
-            db.add(Message(conversation_id=conversation_id, role="assistant", content=response_text))
-            db.commit()
+                response_text = full_response.strip()
+                span.set_attribute("response.length", len(response_text))
 
-            # Trigger background summarisation when history first overflows the window
-            await store.schedule_summary_if_needed(conversation_id, str(user.id))
+                await store.append_message(conversation_id, "user", query)
+                await store.append_message(conversation_id, "assistant", response_text)
 
-            # Layer 3: fire-and-forget profile extraction (does not block streaming)
-            asyncio.create_task(
-                update_user_profile_async(str(user.id), query, response_text)
-            )
+                db.add(Message(conversation_id=conversation_id, role="user", content=query))
+                db.add(Message(conversation_id=conversation_id, role="assistant", content=response_text))
+                db.commit()
 
-            # Auto-generate conversation title from the first exchange
-            if conv.title == "新对话":
+                # Trigger background summarisation when history first overflows the window
+                await store.schedule_summary_if_needed(conversation_id, str(user.id))
+
+                # Layer 3: fire-and-forget profile extraction (does not block streaming)
                 asyncio.create_task(
-                    generate_title_async(conversation_id, query, db)
+                    update_user_profile_async(str(user.id), query, response_text)
                 )
+
+                # Auto-generate conversation title from the first exchange
+                if conv.title == "新对话":
+                    asyncio.create_task(
+                        generate_title_async(conversation_id, query, db)
+                    )
 
     except WebSocketDisconnect:
         pass

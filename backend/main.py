@@ -21,9 +21,12 @@ from backend.db.session import create_tables
 async def lifespan(app: FastAPI):
     from backend.utils.config_handler import settings
     from backend.utils.logger_handler import logger
+    from backend.utils.telemetry import setup_telemetry
     import os
 
     create_tables()
+
+    setup_telemetry(endpoint=settings.OTEL_ENDPOINT)
 
     # Warn if CODE model is still set to the API key value
     if settings.DOUBAO_MODEL_CODE == settings.DOUBAO_API_KEY:
@@ -37,6 +40,7 @@ async def lifespan(app: FastAPI):
         "startup",
         langsmith_tracing=tracing_on,
         langsmith_project=os.environ.get("LANGCHAIN_PROJECT", "—"),
+        otel_enabled=bool(settings.OTEL_ENDPOINT),
     )
 
     yield
@@ -49,6 +53,12 @@ app = FastAPI(
     redoc_url="/api/redoc",
     lifespan=lifespan,
 )
+
+try:
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    FastAPIInstrumentor.instrument_app(app)
+except ImportError:
+    pass  # package not installed — FastAPI auto-instrumentation skipped
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)

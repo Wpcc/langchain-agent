@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     LANGSMITH_TRACING: bool = True
     LANGSMITH_API_KEY: str = ""
     LANGCHAIN_PROJECT: str = "zhisaotong-dev"
+    # OpenTelemetry (optional) — set to OTLP HTTP endpoint to enable
+    # e.g. http://localhost:4318 for a local Jaeger / Grafana Tempo instance
+    OTEL_ENDPOINT: str = ""
 
     model_config = SettingsConfigDict(env_file=_ENV_FILE, env_file_encoding="utf-8")
 
