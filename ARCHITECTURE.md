@@ -164,7 +164,7 @@ The four layers solve different problems at different time scales:
 └──────────────────────┬──────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────┐
-│  Layer 1: Sliding Window + Conversation Summary     │
+│  Layer 1: Conversation Session (sliding window)     │
 │                                                     │
 │  Window: Last 10 turns (20 messages) from Redis     │
 │  Why: Prevents context window overflow.             │
@@ -181,20 +181,13 @@ The four layers solve different problems at different time scales:
 │  Why: Pure truncation loses early context entirely. │
 │  A summary preserves intent at near-zero token cost.│
 │                                                     │
+│  Storage (Redis, 24h TTL, in-memory fallback):      │
+│    conv:{id}               → full message array     │
+│    conv_summary:{id}       → summary text           │
+│    conv_summary_cursor:{id}→ int (messages covered) │
+│                                                     │
 │  get_window_with_summary() returns:                 │
 │    [summary message] + [last 10 turns]              │
-└──────────────────────┬──────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────┐
-│  Layer 2: Redis Session Cache                       │
-│  What: Full conversation history as JSON array      │
-│  Why: Reading from Redis is O(1) and ~1ms.          │
-│       SQLite has higher latency and requires        │
-│       a DB session. Redis is the hot path.          │
-│  Keys: conv:{id} → messages           TTL: 86400s   │
-│        conv_summary:{id} → summary    TTL: 86400s   │
-│        conv_summary_cursor:{id} → int TTL: 86400s   │
-│  Fallback: in-memory dict if Redis is unavailable   │
 └──────────────────────┬──────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────┐
