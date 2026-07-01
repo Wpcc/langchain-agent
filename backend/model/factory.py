@@ -22,9 +22,9 @@ class ChatModelFactory(BaseModelFactory):
         max_tokens: int | None = None,
     ) -> ChatOpenAI:
         kwargs = dict(
-            model=model or rag_config["DOUBAO_MODEL_PRO"],
-            base_url=rag_config["DOUBAO_BASE_URL"],
-            api_key=rag_config["DOUBAO_API_KEY"],
+            model=model or rag_config["LLM_MODEL_PRO"],
+            base_url=rag_config["LLM_BASE_URL"],
+            api_key=rag_config["LLM_API_KEY"],
             temperature=temperature,
             max_retries=3,
         )
@@ -54,23 +54,23 @@ _factory = ChatModelFactory()
 # └─────────────┴──────────────────┴─────────────┴──────────────────────────────┘
 
 chat_model = _factory.generator(
-    model=rag_config["DOUBAO_MODEL_PRO"],
+    model=rag_config["LLM_MODEL_PRO"],
     temperature=0.7,
 )
 
 rag_model = _factory.generator(
-    model=rag_config["DOUBAO_MODEL_MINI"],
+    model=rag_config["LLM_MODEL_MINI"],
     temperature=0,
     max_tokens=1024,
 )
 
 lite_model = _factory.generator(
-    model=rag_config["DOUBAO_MODEL_LITE"],
+    model=rag_config["LLM_MODEL_LITE"],
     temperature=0.7,
 )
 
 code_model = _factory.generator(
-    model=rag_config["DOUBAO_MODEL_CODE"],
+    model=rag_config["LLM_MODEL_CODE"],
     temperature=0,
 )
 

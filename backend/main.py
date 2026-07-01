@@ -29,10 +29,10 @@ async def lifespan(app: FastAPI):
     setup_telemetry(endpoint=settings.OTEL_ENDPOINT)
 
     # Warn if CODE model is still set to the API key value
-    if settings.DOUBAO_MODEL_CODE == settings.DOUBAO_API_KEY:
+    if settings.LLM_MODEL_CODE == settings.LLM_API_KEY:
         logger.warning(
             "misconfiguration",
-            detail="DOUBAO_MODEL_CODE equals DOUBAO_API_KEY — set it to a real endpoint ID in Ark console (模型推理 → 在线推理)",
+            detail="LLM_MODEL_CODE equals LLM_API_KEY — set it to a real model name / endpoint ID",
         )
 
     tracing_on = os.environ.get("LANGSMITH_TRACING", "").lower() == "true"

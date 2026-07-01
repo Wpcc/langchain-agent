@@ -40,7 +40,7 @@ class ReactAgent:
                 monitor_tool,
                 log_before_model,
                 report_prompt_switch,
-            ],
+            ]
         )
 
     def execute_stream(self, query: str, history: list[dict] = None):

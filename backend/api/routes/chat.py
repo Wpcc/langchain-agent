@@ -18,7 +18,7 @@ from backend.core.security import decode_token
 from backend.core.episodic_memory import episodic_store
 from backend.core.session import ConversationStore, get_redis, profile_store
 from backend.utils.telemetry import get_tracer
-from backend.core.profile import update_user_profile_async, generate_title_async
+from backend.core.profile import update_user_profile_async, generate_title_async, filter_relevant_profile
 from backend.db.models import Conversation, Message, User
 from backend.schemas.chat import ChatHistoryResponse, ConversationSchema, MessageSchema
 
@@ -118,8 +118,12 @@ async def chat_websocket(
                     {"role": "assistant", "content": "好的。"},
                 ] + history
 
-                # Layer 2: inject long-term user profile after date, before history
+                # Layer 2: inject long-term user profile after date, before history.
+                # Filter to only facts relevant to this query so unrelated
+                # facts don't waste context or distract the agent.
                 user_profile = profile_store.get_profile(str(user.id), db)
+                user_profile = await filter_relevant_profile(query, user_profile)
+                span.set_attribute("profile.facts_injected", len(user_profile))
                 history = profile_store.inject(user_profile, history)
 
                 full_response = ""

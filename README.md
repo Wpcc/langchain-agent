@@ -119,15 +119,15 @@ npm install
 Create `backend/.env`:
 
 ```env
-# ── Doubao LLM (ByteDance Ark) ──────────────────────────────────────────────
-DOUBAO_API_KEY=your_doubao_api_key
-DOUBAO_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+# ── LLM (any OpenAI-compatible provider) ────────────────────────────────────
+LLM_API_KEY=your_llm_api_key
+LLM_BASE_URL=https://api.your-provider.com/v1
 
-# Model endpoints (get these from Ark console → Model Inference)
-DOUBAO_MODEL_PRO=doubao-seed-2-0-pro-260215
-DOUBAO_MODEL_MINI=doubao-seed-2-0-mini-260428
-DOUBAO_MODEL_LITE=doubao-seed-2-0-lite-260428
-DOUBAO_MODEL_CODE=your_code_model_endpoint_id
+# Model names for the routing roster
+LLM_MODEL_PRO=your_pro_model
+LLM_MODEL_MINI=your_mini_model
+LLM_MODEL_LITE=your_lite_model
+LLM_MODEL_CODE=your_code_model
 
 # ── DashScope Embeddings (Alibaba) ───────────────────────────────────────────
 EMBEDDING_MODEL=text-embedding-v3

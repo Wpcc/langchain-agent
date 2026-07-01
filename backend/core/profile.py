@@ -21,6 +21,43 @@ _EXTRACTION_PROMPT = """从下面一轮对话中提取关于用户的新事实�
 """
 
 
+_RELEVANCE_PROMPT = """从下面的用户已知信息中，挑选出与用户当前问题相关的事实。
+规则：
+1. 只挑选与当前问题相关的事实，无关的忽略。
+2. 以JSON数组返回相关事实的key，例如 ["设备型号", "使用偏好"]。
+3. 没有任何相关事实则返回空数组 []。
+4. 只返回JSON，不要任何其他文字。
+
+用户当前问题：{query}
+已知信息：{facts}
+"""
+
+
+async def filter_relevant_profile(query: str, profile: dict) -> dict:
+    """Keep only the profile facts relevant to the current query.
+
+    Runs on the streaming hot path via lite_model, so on any failure it falls
+    back to the full profile rather than silently dropping the user's context.
+    """
+    if not profile:
+        return {}
+    try:
+        facts_text = "；".join(f"{k}：{v}" for k, v in profile.items())
+        prompt = _RELEVANCE_PROMPT.format(query=query, facts=facts_text)
+        loop = asyncio.get_running_loop()
+        raw = await loop.run_in_executor(
+            None,
+            lambda: lite_model.invoke(prompt).content,
+        )
+        keys = json.loads(raw.strip())
+        if not isinstance(keys, list):
+            return profile
+        return {k: profile[k] for k in keys if k in profile}
+    except Exception as e:
+        logger.warning("profile_relevance_filter_failed", error=str(e))
+        return profile  # fall back to full profile on failure
+
+
 async def _extract_facts(user_msg: str, assistant_msg: str) -> dict:
     """Call lite_model to extract facts; return {key: value} or {} on failure."""
     try:

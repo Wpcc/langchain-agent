@@ -13,14 +13,14 @@ load_dotenv(dotenv_path=_ENV_FILE, override=False)
 
 
 class Settings(BaseSettings):
-    # LLM — shared credentials
-    DOUBAO_API_KEY: str
-    DOUBAO_BASE_URL: str
+    # LLM — shared credentials (any OpenAI-compatible provider)
+    LLM_API_KEY: str
+    LLM_BASE_URL: str
     # Model roster (rule-based routing in model/factory.py)
-    DOUBAO_MODEL_PRO: str   # main agent, complex reasoning
-    DOUBAO_MODEL_MINI: str  # RAG summarization, structured tasks
-    DOUBAO_MODEL_LITE: str  # simple / high-frequency tasks
-    DOUBAO_MODEL_CODE: str  # code generation / analysis
+    LLM_MODEL_PRO: str   # main agent, complex reasoning
+    LLM_MODEL_MINI: str  # RAG summarization, structured tasks
+    LLM_MODEL_LITE: str  # simple / high-frequency tasks
+    LLM_MODEL_CODE: str  # code generation / analysis
     # Embeddings
     EMBEDDING_MODEL: str
     EMBEDDING_API_KEY: str
@@ -42,7 +42,11 @@ class Settings(BaseSettings):
     # e.g. http://localhost:4318 for a local Jaeger / Grafana Tempo instance
     OTEL_ENDPOINT: str = ""
 
-    model_config = SettingsConfigDict(env_file=_ENV_FILE, env_file_encoding="utf-8")
+    # extra="ignore" so inactive provider blocks (e.g. DOUBAO_*) in .env are
+    # skipped rather than raising — only the LLM_* keys are consumed.
+    model_config = SettingsConfigDict(
+        env_file=_ENV_FILE, env_file_encoding="utf-8", extra="ignore"
+    )
 
 
 @lru_cache
@@ -53,12 +57,12 @@ def get_settings() -> Settings:
 settings = get_settings()
 
 rag_config = {
-    "DOUBAO_API_KEY":    settings.DOUBAO_API_KEY,
-    "DOUBAO_BASE_URL":   settings.DOUBAO_BASE_URL,
-    "DOUBAO_MODEL_PRO":  settings.DOUBAO_MODEL_PRO,
-    "DOUBAO_MODEL_MINI": settings.DOUBAO_MODEL_MINI,
-    "DOUBAO_MODEL_LITE": settings.DOUBAO_MODEL_LITE,
-    "DOUBAO_MODEL_CODE": settings.DOUBAO_MODEL_CODE,
+    "LLM_API_KEY":    settings.LLM_API_KEY,
+    "LLM_BASE_URL":   settings.LLM_BASE_URL,
+    "LLM_MODEL_PRO":  settings.LLM_MODEL_PRO,
+    "LLM_MODEL_MINI": settings.LLM_MODEL_MINI,
+    "LLM_MODEL_LITE": settings.LLM_MODEL_LITE,
+    "LLM_MODEL_CODE": settings.LLM_MODEL_CODE,
     "EMBEDDING_MODEL":   settings.EMBEDDING_MODEL,
     "EMBEDDING_API_KEY": settings.EMBEDDING_API_KEY,
 }
