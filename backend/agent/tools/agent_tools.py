@@ -42,15 +42,13 @@ def get_weather(city: str) -> str:
     try:
         from tavily import TavilyClient
         client = TavilyClient(api_key=settings.TAVILY_API_KEY)
+        # include_answer runs Tavily's own LLM (adds latency); the agent
+        # summarizes the raw snippet itself, so fetch results only.
         response = client.search(
             query=f"{city}今天天气",
             search_depth="basic",
-            max_results=3,
-            include_answer=True,
+            max_results=1,
         )
-        answer = response.get("answer", "")
-        if answer:
-            return f"{city}天气：{answer}"
         results = response.get("results", [])
         if results:
             return f"{city}天气：{results[0].get('content', '')[:300]}"
