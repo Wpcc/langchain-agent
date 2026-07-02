@@ -20,6 +20,7 @@ class ChatModelFactory(BaseModelFactory):
         model: str | None = None,
         temperature: float = 0.7,
         max_tokens: int | None = None,
+        thinking: str | None = None,
     ) -> ChatOpenAI:
         kwargs = dict(
             model=model or rag_config["LLM_MODEL_PRO"],
@@ -30,6 +31,15 @@ class ChatModelFactory(BaseModelFactory):
         )
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
+        # Volcengine Ark (Doubao seed models) default to reasoning ("thinking")
+        # mode, which emits hidden reasoning tokens before answering and adds
+        # several seconds of latency. Pass "disabled"/"auto"/"enabled" to control it.
+        if thinking is not None:
+            # `thinking` is a Volcengine Ark extension, not part of the OpenAI
+            # schema. It must go through extra_body (request body passthrough);
+            # model_kwargs would spread it as a top-level create() arg and the
+            # OpenAI client rejects it with a TypeError.
+            kwargs["extra_body"] = {"thinking": {"type": thinking}}
         return ChatOpenAI(**kwargs)
 
 
@@ -56,6 +66,7 @@ _factory = ChatModelFactory()
 chat_model = _factory.generator(
     model=rag_config["LLM_MODEL_PRO"],
     temperature=0.7,
+    thinking="disabled",  # weather/RAG/report flows don't need reasoning tokens
 )
 
 rag_model = _factory.generator(
@@ -67,6 +78,7 @@ rag_model = _factory.generator(
 lite_model = _factory.generator(
     model=rag_config["LLM_MODEL_LITE"],
     temperature=0.7,
+    thinking="disabled",  # extraction/title/relevance-filter are simple, fast tasks
 )
 
 code_model = _factory.generator(
