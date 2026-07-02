@@ -78,8 +78,21 @@
             </el-avatar>
 
             <div class="bubble">
-              <div class="content" v-html="toHtml(msg.content)" />
-              <el-icon v-if="msg.pending" class="spin"><Loading /></el-icon>
+              <!-- Waiting for first token: animated typing indicator -->
+              <div
+                v-if="msg.role === 'assistant' && msg.pending && !msg.content"
+                class="typing"
+                aria-label="正在思考"
+              >
+                <span></span><span></span><span></span>
+              </div>
+              <!-- Streaming / final content (blinking caret while pending) -->
+              <div
+                v-else
+                class="content"
+                :class="{ streaming: msg.pending }"
+                v-html="toHtml(msg.content)"
+              />
             </div>
           </div>
         </div>
@@ -122,7 +135,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   Plus, Promotion, UserFilled, Service,
-  ChatDotRound, ChatLineRound, Loading, SwitchButton, User, Delete, Folder,
+  ChatDotRound, ChatLineRound, SwitchButton, User, Delete, Folder,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
@@ -328,8 +341,42 @@ function handleLogout() {
   border-top-left-radius: 2px;
 }
 
-.spin { color: #909399; animation: spin 1s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+/* Typing indicator — shown while waiting for the first token */
+.typing {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 14px 16px;
+  background: #f5f7fa;
+  border-radius: 12px;
+  border-top-left-radius: 2px;
+}
+.typing span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #c0c4cc;
+  animation: typing-bounce 1.4s infinite ease-in-out both;
+}
+.typing span:nth-child(1) { animation-delay: -0.32s; }
+.typing span:nth-child(2) { animation-delay: -0.16s; }
+@keyframes typing-bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40%           { transform: scale(1);   opacity: 1;   }
+}
+
+/* Blinking caret appended while tokens are still streaming in */
+.content.streaming::after {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: #909399;
+  animation: caret-blink 1s step-end infinite;
+}
+@keyframes caret-blink { 50% { opacity: 0; } }
 
 .citation {
   display: inline-block;
